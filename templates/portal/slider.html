@@ -1,0 +1,8 @@
+{% load static %} {# Подключаем static для локальных иллюстраций. #}
+<div class="slider" role="region" aria-roledescription="карусель" aria-label="Возможности обучения" tabindex="0"> {# Обозначаем доступную карусель; tabindex позволяет управлять ею с клавиатуры. #}
+<img class="slide active" src="{% static 'media/slide-1.svg' %}" width="1200" height="675" alt="Программирование: от идеи к работающему коду"> {# Первый из ровно четырёх кадров виден до выполнения JavaScript. #}
+<img class="slide" src="{% static 'media/slide-2.svg' %}" width="1200" height="675" alt="Веб-дизайн: создавайте понятные интерфейсы" aria-hidden="true"> {# Второй кадр того же размера изначально скрыт от просмотра и диктора. #}
+<img class="slide" src="{% static 'media/slide-3.svg' %}" width="1200" height="675" alt="Базы данных: превращайте данные в систему" aria-hidden="true"> {# Третий кадр представляет направление баз данных. #}
+<img class="slide" src="{% static 'media/slide-4.svg' %}" width="1200" height="675" alt="Онлайн-обучение в вашем темпе" aria-hidden="true"> {# Четвёртый кадр завершает цикл слайдера. #}
+<div class="slider-controls"><button type="button" class="prev" aria-label="Предыдущий слайд">←</button><span class="slide-counter" aria-live="polite">1 / 4</span><button type="button" class="next" aria-label="Следующий слайд">→</button></div> {# Стрелки не отправляют форму; текстовый счётчик сообщает номер кадра. #}
+</div> {# Закрываем общий контейнер карусели. #}

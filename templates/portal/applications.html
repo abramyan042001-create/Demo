@@ -1,0 +1,18 @@
+{% extends "base.html" %} {# Используем единый каркас интерфейса. #}
+{% block title %}Мои заявки{% endblock %} {# Название личного кабинета во вкладке браузера. #}
+{% block content %} {# Открываем содержимое личного кабинета. #}
+<div class="page-heading"><div><p class="eyebrow">ЛИЧНЫЙ КАБИНЕТ</p><h1>Мои заявки</h1><p>{{ user.full_name }}, здесь ваш путь к новым знаниям.</p></div><a class="button primary" href="{% url 'new_application' %}">Новая заявка</a></div> {# Приветствуем текущего пользователя и даём действие создания заявки. #}
+<div class="application-grid"> {# Сетка карточек адаптируется к ширине экрана. #}
+{% for item in items %} {# Перебираем уже отфильтрованные сервером собственные заявки. #}
+<article class="card application"><div class="card-top"><span>Заявка №{{ item.pk }}</span><span class="badge {{ item.status }}">{{ item.get_status_display }}</span></div> {# Русскую подпись статуса берём из choices модели. #}
+<h2>{{ item.course.title }}</h2><p>Начало: {{ item.start_date|date:"d.m.Y" }}</p><p>Оплата: {{ item.get_payment_method_display }}</p> {# Показываем курс, дату в нужном формате и подпись оплаты. #}
+{% if item.status == "completed" %} {# Форма отзыва видна только после завершения; обработчик дополнительно проверяет статус. #}
+<form action="{% url 'review' item.pk %}" method="post" data-loading>{% csrf_token %} {# Отправляем отзыв по адресу конкретной заявки с CSRF-токеном. #}
+<label for="review-{{ item.pk }}">Ваш отзыв</label><textarea id="review-{{ item.pk }}" name="review_text" rows="4" maxlength="2000" required>{{ item.review_text }}</textarea> {# У каждой формы свой уникальный id; старый отзыв выводится экранированным и доступен для редактирования. #}
+<button type="submit" class="button secondary">Сохранить отзыв</button><p class="loading-message" role="status" hidden>Сохраняем отзыв…</p></form> {# Кнопка сохраняет текст, а скрытая область служит индикатором отправки. #}
+{% else %}<p class="help">Отзыв можно оставить после завершения обучения.</p>{% endif %} {# До завершения объясняем условие, чтобы отсутствие формы было понятно. #}
+</article> {# Закрываем карточку заявки. #}
+{% empty %}<div class="card empty"><h2>Ваше обучение начинается здесь</h2><p>Пока заявок нет. Выберите курс и удобную дату начала.</p><a href="{% url 'new_application' %}" class="button primary">Выбрать курс</a></div> {# Ветка empty выводится только когда список пуст. #}
+{% endfor %} {# Завершаем перебор заявок. #}
+</div> {# Закрываем сетку. #}
+{% endblock %} {# Закрываем блок содержимого. #}
