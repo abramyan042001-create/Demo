@@ -1,0 +1,867 @@
+<!doctype html>
+<html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Простой Django — читаем и учимся</title>
+<style>*{box-sizing:border-box}body{margin:0;background:#f3f6f4;color:#173b31;font:17px/1.7 system-ui,Arial,sans-serif}header{padding:36px max(20px,calc((100% - 1050px)/2));background:#163f35;color:white}header h1{font-size:36px;line-height:1.2;margin:0 0 16px}header p{max-width:740px;color:#d3e6da}main{max-width:1050px;margin:auto;padding:25px 20px 70px}nav{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:24px}a{color:#086349;text-underline-offset:4px}nav a{background:#fff;border:1px solid #c3d9cb;border-radius:10px;padding:8px 12px;text-decoration:none}section{background:#fff;padding:28px;border:1px solid #d3e0d8;border-radius:14px;margin-bottom:24px}h1{font-size:29px;line-height:1.3}h2{font-size:24px;margin-top:32px}h3{font-size:20px}p,li{max-width:95ch}pre{padding:18px;background:#eaf1eb;overflow:auto;border-radius:10px}code{font-family:Consolas,monospace;font-size:.9em;overflow-wrap:anywhere}table{display:block;overflow:auto;border-collapse:collapse;font-size:15px}td,th{padding:10px;border:1px solid #c5d8cb;vertical-align:top;text-align:left}th{background:#e7f0e9}summary{cursor:pointer;padding:16px;background:#e8f1eb;font-weight:750;border-radius:10px}details{margin:16px 0;border:1px solid #d6e2da;border-radius:10px}.source-lines{padding:0;margin:0;list-style:none}.source-line{max-width:none;padding:14px 18px;border-top:1px solid #dce6de}.number{display:block;font-size:11px;letter-spacing:1px;color:#597b68}.source-code{display:block;white-space:pre-wrap;color:#14382c;background:#f0f5f1;padding:10px;border-radius:6px}.explanation{margin:8px 0 0;color:#315a46;font-size:15px}.note{color:#597361;font-size:14px}@media(max-width:600px){header{padding:26px 20px}header h1{font-size:28px}main{padding:18px 10px}section{padding:20px 15px}.source-line{padding:12px 10px}}</style></head><body>
+<header><h1>Django: понять и написать самому</h1><p>Сначала — порядок написания и объяснение конструкции. Затем — каждый исходник: строка кода и отдельно её русское пояснение. Это пособие для чтения, запуск сайта для него не нужен.</p></header><main>
+<nav><a href="#lesson">Порядок написания</a><a href="#sources">Каждая строка кода</a><a href="#practice">Упражнения</a><a href="#checks">Проверки</a></nav>
+<section id="lesson"><h1>Учимся писать «Корочки.есть» на Django</h1>
+<p>Твоя цель — самостоятельно написать работу. Поэтому читай не весь проект подряд, а проходи один понятный шаг за другим: <strong>данные → проверка → действие → адрес → HTML</strong>. Затем повторяй шаг без готового файла перед глазами.</p>
+<p>Для чтения ничего устанавливать не нужно. В самом коде справа от каждой непустой строки стоит объяснение. Здесь разбираются общие принципы, чтобы комментарии не превращались в набор слов, который приходится заучивать.</p>
+<h2>1. Сначала пойми одну цепочку</h2>
+<p>Человек открывает адрес → Django выбирает функцию → функция получает данные → проверяет их → читает или изменяет БД → возвращает HTML или перенаправление.</p>
+<p>На примере заявки:</p>
+<ol>
+<li>Открыт <code>/applications/new/</code> — это GET-запрос, человек ещё ничего не отправил.</li>
+<li>В <code>portal/urls.py</code> этот путь связан с <code>new_application_view</code>.</li>
+<li>Функция создаёт пустую <code>ApplicationForm</code> и показывает её в HTML.</li>
+<li>Человек выбирает курс, вводит дату и нажимает «Отправить заявку».</li>
+<li>Браузер посылает POST на тот же адрес.</li>
+<li>Функция связывает форму с <code>request.POST</code> и вызывает <code>is_valid()</code>.</li>
+<li>Если ошибок нет, создаёт объект, назначает владельца и сохраняет в БД.</li>
+<li><code>redirect("applications")</code> направляет браузер к списку.</li>
+<li>Список выбирает только записи этого пользователя и показывает их.</li>
+</ol>
+<p>Пока не можешь пересказать эту цепочку, не переходи к слайдеру и красивому оформлению.</p>
+<h2>2. Порядок написания с нуля</h2>
+<h3>Шаг 1. Каркас и настройки</h3>
+<p>При самостоятельной тренировке создаются проект config и приложение portal. В уже скачанном Demo создавать их повторно не надо.</p>
+<pre><code class="language-bash"># Создать проект в текущей папке; точка в конце означает именно текущую папку.
+python -m django startproject config .
+# Создать приложение с нашими моделями и страницами.
+python manage.py startapp portal
+</code></pre>
+<p>В <code>settings.py</code> добавь portal в INSTALLED_APPS, укажи папку templates, статические файлы и SQLite. <strong>AUTH_USER_MODEL = "portal.User" нужно указать до первого migrate</strong>, потому что проект использует свою модель пользователя.</p>
+<p>Настройки не нужно переписывать наугад: стандартный startproject уже создаёт большую часть. В нашем settings.py каждой строке дано пояснение. Случайный локальный ключ хранится в .local_secret и не отправляется в Git.</p>
+<h3>Шаг 2. Модели — какие данные храним</h3>
+<p>Открой <code>portal/models.py</code>.</p>
+<ul>
+<li>User — обычный пользователь Django плюс ФИО и телефон. Логин, пароль, email и is_staff уже получены от AbstractUser.</li>
+<li>Course — название курса.</li>
+<li>Application — владелец, курс, дата, оплата, статус и отзыв.</li>
+</ul>
+<p><code>class User(AbstractUser)</code> означает: «Возьми готовые возможности пользователя и добавь мои поля». Это наследование и пример ООП. Не нужно отдельно писать таблицу паролей, собственный алгоритм хеша и всю систему входа.</p>
+<p><code>CharField</code> — короткая строка. <code>TextField</code> — большой текст. <code>DateField</code> — настоящая дата. <code>ForeignKey</code> — ссылка на другую таблицу.</p>
+<p><code>user = ForeignKey(User, ...)</code> не копирует целого пользователя в каждую заявку. В БД появляется число user_id. Django по этому числу может получить связанный объект: <code>item.user.full_name</code>.</p>
+<p><code>on_delete=PROTECT</code> запрещает удалить пользователя или курс, пока на него ссылается заявка. Так история не потеряется случайно.</p>
+<p><code>choices=STATUSES</code> даёт форме допустимые варианты. В коде используются короткие значения new/studying/completed, а на сайте показываются русские подписи. <code>default="new"</code> назначает начальный статус новой записи.</p>
+<p><code>blank=True</code> разрешает пустой отзыв при создании заявки. <code>default=""</code> означает, что сначала он хранится пустой строкой.</p>
+<p><code>class Meta</code> с <code>ordering=["-id"]</code> означает: при обычном выборе сортировать записи от большого id к маленькому — новые раньше старых.</p>
+<p>После моделей:</p>
+<pre><code class="language-bash"># Создать файл изменения структуры БД по написанным моделям.
+python manage.py makemigrations
+# Выполнить изменения и создать таблицы.
+python manage.py migrate
+</code></pre>
+<p><strong>Проверка себя:</strong> можешь ли ты нарисовать три прямоугольника User, Course, Application и показать две связи один-ко-многим? Если да, модель понятна.</p>
+<h3>Шаг 3. Формы — какие данные принимаем</h3>
+<p>Открой <code>portal/forms.py</code>. Здесь четыре небольших класса.</p>
+<table>
+<thead>
+<tr>
+<th>Форма</th>
+<th>Для чего</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>RegisterForm</td>
+<td>Создать пользователя с правильными полями и паролем</td>
+</tr>
+<tr>
+<td>ApplicationForm</td>
+<td>Принять только курс, дату и оплату</td>
+</tr>
+<tr>
+<td>ReviewForm</td>
+<td>Принять только текст отзыва</td>
+</tr>
+<tr>
+<td>StatusForm</td>
+<td>Принять только один разрешённый статус</td>
+</tr>
+</tbody>
+</table>
+<p><code>ModelForm</code> — форма, связанная с моделью. Её <code>Meta.model</code> указывает таблицу, <code>Meta.fields</code> перечисляет поля, которые посетитель имеет право отправлять.</p>
+<p>Почему в ApplicationForm нет user и status? Потому что эти значения нельзя доверять браузеру. Владелец берётся из входа в аккаунт, статус новой записи — из модели.</p>
+<p>RegisterForm наследует UserCreationForm. Родитель уже сравнивает password1/password2 и сохраняет хеш пароля. Мы добавляем нужные поля и правила. Дополнительный повтор пароля помогает поймать опечатку.</p>
+<p>RegexField проверяет текст по регулярному выражению. EmailField проверяет email. PasswordInput скрывает ввод. Textarea создаёт большое поле. RadioSelect показывает варианты оплаты кружочками.</p>
+<p><code>widget</code> отвечает за внешний HTML, а поле формы — за проверку на сервере. Поэтому есть pattern/minlength в браузере и независимая серверная проверка. Обход браузера не должен давать возможность записать неправильные данные.</p>
+<h3>Шаг 4. Обычная проверка формы</h3>
+<p>Разбери эти выражения отдельно:</p>
+<ul>
+<li><code>request.method == "POST"</code> — человек отправил форму, а не просто открыл страницу.</li>
+<li><code>request.POST</code> — словарь отправленных значений.</li>
+<li><code>form.is_valid()</code> — проверить все поля и вернуть True или False.</li>
+<li><code>form.cleaned_data</code> — уже проверенные и преобразованные значения; дата здесь является объектом даты, а не сырой строкой.</li>
+<li><code>form.save()</code> — сохранить результат, если это ModelForm.</li>
+</ul>
+<p>Почему написано <code>request.POST if request.method == "POST" else None</code>? При GET нужна <strong>пустая несвязанная</strong> форма. При POST нужна <strong>связанная</strong> форма, которая будет показывать введённое и ошибки. Пустой POST всё равно должен проверяться, поэтому мы явно смотрим метод.</p>
+<p>В ApplicationForm метод clean_start_date вызывается после проверки DateField. DateField отвергает несуществующий день, а сравнение со strftime дополнительно требует точную запись ДД.ММ.ГГГГ с нулями. В отличие от старого примера из архива, 31 февраля не проходит.</p>
+<p>Прошлые даты в этом учебном варианте отдельно не запрещены: такого ограничения в присланном официальном тексте нет. Если оно будет в другом варианте — добавишь свою проверку.</p>
+<h3>Шаг 5. View — что сделать при запросе</h3>
+<p>Открой <code>portal/views.py</code> и начни с <code>applications_view</code>, потому что это самая простая полезная функция.</p>
+<pre><code class="language-python">items = Application.objects.filter(user=request.user)  # Взять только заявки того, кто сейчас вошёл.
+return render(request, &quot;portal/applications.html&quot;, {&quot;items&quot;: items})  # Показать HTML и передать ему найденный список.
+</code></pre>
+<p><code>Application.objects</code> — менеджер работы с таблицей. <code>filter</code> задаёт условие выборки. <code>request.user</code> — пользователь, которого Django определил по сессии. Словарь <code>{"items": items}</code> даёт шаблону имя переменной.</p>
+<p>Дальше читай <code>new_application_view</code>:</p>
+<pre><code class="language-python">item = form.save(commit=False)  # Получить объект в памяти, пока без записи в БД.
+item.user = request.user  # Назначить владельца со стороны сервера.
+item.save()  # Сохранить заполненную заявку.
+</code></pre>
+<p>Почему не просто form.save? В форме намеренно нет поля user. Если сохранить слишком рано, заявке не будет назначен обязательный владелец. commit=False позволяет его дописать.</p>
+<p>Отдельного <code>item.status = "new"</code> не нужно: модель уже задаёт default. Если посетитель добавит status=completed в POST, ModelForm проигнорирует это поле, поскольку его нет в Meta.fields.</p>
+<p>После записи используется redirect. Обновляя список, браузер повторит GET, а не предыдущий POST. Это обычный приём POST → Redirect → GET. Он не запрещает две намеренно отдельно отправленные заявки, но предотвращает обычное повторение формы кнопкой обновления страницы.</p>
+<h3>Шаг 6. Адреса</h3>
+<p>В <code>portal/urls.py</code> каждая строка отвечает на вопрос: «Какую функцию вызвать для этого пути?»</p>
+<p><code>path("applications/new/", views.new_application_view, name="new_application")</code> содержит:</p>
+<ul>
+<li>путь от корня сайта;</li>
+<li>функцию, которая будет вызвана;</li>
+<li>короткое имя адреса для ссылок и redirect.</li>
+</ul>
+<p>В шаблоне <code>{% url 'new_application' %}</code> найдёт тот же маршрут по имени. Если изменится путь, не придётся вручную искать все ссылки по проекту.</p>
+<p><code>&lt;int:pk&gt;</code> означает числовую часть адреса. В <code>/applications/17/review/</code> функция получит pk=17. Само знание числа не даёт права на запись: view дополнительно проверяет владельца.</p>
+<p>В <code>config/urls.py</code> include подключает все адреса приложения portal.</p>
+<h3>Шаг 7. HTML</h3>
+<p>Начни с <code>templates/base.html</code>. Это общая оболочка: head, шапка, меню, main, подвал. <code>{% block content %}</code> — место для содержимого конкретной страницы.</p>
+<p><code>{% extends "base.html" %}</code> берёт оболочку. <code>{{ value }}</code> выводит значение. <code>{% if %}</code> выбирает ветку. <code>{% for %}</code> перебирает записи. <code>{% empty %}</code> выполняется, когда список пустой.</p>
+<p>В form.html один простой цикл показывает поля любой из наших форм. <code>{{ field }}</code> создаёт готовый input/select/textarea. <code>{{ field.errors }}</code> показывает ошибку рядом с полем. <code>{{ form.non_field_errors }}</code> показывает общую ошибку — например, неправильный логин/пароль.</p>
+<p><code>method="post"</code> отправляет поля в request.POST. Атрибут name становится именем отправленного значения. <code>{% csrf_token %}</code> добавляет защитное скрытое поле. Не удаляй его ради уменьшения числа строк.</p>
+<p><code>{{ item.get_status_display }}</code> выводит русскую подпись choices. <code>{{ item.start_date|date:"d.m.Y" }}</code> отображает дату привычно человеку.</p>
+<p>Django экранирует пользовательский текст. Поэтому <code>&lt;script&gt;</code> в отзыве станет буквальным текстом. Не добавляй |safe к отзывам, чтобы случайно не отключить эту защиту.</p>
+<h3>Шаг 8. Регистрация и вход</h3>
+<p>В register_view форма проверяется и сохраняется, затем человек переходит на вход. Хеш создаёт UserCreationForm, а не наше присваивание password.</p>
+<p>В login_view используется готовая AuthenticationForm. <code>form.get_user()</code> возвращает найденного пользователя. <code>login(request, user)</code> создаёт сессию. На следующих запросах Django определяет request.user по сессии.</p>
+<p>У Admin пять букв, а обычный новый логин должен иметь минимум шесть. Поэтому проверка длины находится <strong>в регистрации</strong>, а форма входа принимает существующего Admin. Пароль администратора при создании вводится по условию задания и не находится в публичном исходнике.</p>
+<p><code>is_staff</code> — флаг роли из БД. Если он True, открывается /admin/. Если False — /applications/. Значение не берётся из POST регистрации.</p>
+<h3>Шаг 9. Защита страниц</h3>
+<p><code>@login_required</code> над функцией проверяет вход до выполнения её тела. Гость будет отправлен на login.</p>
+<p><code>@require_POST</code> не позволяет изменять данные обычным открытием GET-ссылки. В проекте так защищены выход, отзыв и статус.</p>
+<p>В административной панели и в отдельном status_view есть проверка <code>if not request.user.is_staff</code>. Нужны обе: посетитель может не открывать страницу, а попробовать сразу отправить POST на адрес изменения.</p>
+<p>Отзыв получает заявку через <code>get_object_or_404(Application, pk=pk, user=request.user)</code>. Обрати внимание на последнее условие. Без него можно было бы указать номер чужой заявки. С ним чужая запись не находится и возвращается 404.</p>
+<p>После этого view проверяет <code>item.status == "completed"</code>. Скрыть форму в HTML недостаточно: злоумышленник может отправить запрос вручную.</p>
+<h3>Шаг 10. Статус, фильтр и страницы</h3>
+<p>StatusForm — самая простая форма: один ChoiceField со списком STATUSES. is_valid отвергает неизвестный код. После проверки статус сохраняется обычными присваиванием и save.</p>
+<p>В официальном тексте администратор после просмотра может выбрать «Идет обучение» <strong>или</strong> «Обучение завершено». Поэтому мы не добавляем лишнюю цепочку запретов: любой известный статус допустим для администратора.</p>
+<p>Фильтр приходит через GET: <code>/admin/?status=new</code>. <code>request.GET.get("status", "")</code> возвращает выбранное значение или пустую строку. ORM подставляет значение безопасным параметром. Неизвестный статус даст пустой результат, а не SQL-ошибку.</p>
+<p><code>Paginator(items, 5)</code> делит выборку на пятёрки. get_page выбирает страницу и безопасно обрабатывает некорректный номер. В шаблоне ссылки «Назад» и «Далее» сохраняют status в адресе.</p>
+<p><code>messages.success</code> сохраняет подтверждение до следующей страницы. base.html выводит его после redirect.</p>
+<h3>Шаг 11. CSS и слайдер — после работающей логики</h3>
+<p>CSS здесь простой: общий фон, карточка, поля, кнопки и мобильная перестройка шапки. Всё лежит в одном коротком файле.</p>
+<p><code>box-sizing:border-box</code> включает внутренние отступы и рамку в ширину. <code>width:100%</code> тогда не выталкивает поле за карточку. max-width ограничивает форму на компьютере. @media уменьшает отступы и переносит меню на телефоне.</p>
+<p>Четыре фотографии из присланного приложения приведены к одному размеру 800×450. В slider.html ровно четыре img. Кадр с классом active виден, остальные прозрачны.</p>
+<p>В JS номер кадра начинается с нуля. Формула <code>(number + slides.length) % slides.length</code> делает переключение циклическим. С четвертого вперёд попадём на первый, с первого назад — на четвёртый. setInterval с 3000 запускает шаг раз в три секунды. Если в системе включено ограничение движения, автосмена отключается, а кнопки остаются.</p>
+<p>Надпись кнопки меняется на «Сохраняем…» при отправке. pageshow восстанавливает её после возврата назад. Основная логика на сервере работает и при отключённом JavaScript.</p>
+<h2>3. Мини-словарь Python</h2>
+<table>
+<thead>
+<tr>
+<th>Запись</th>
+<th>Простой смысл</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>name = value</code></td>
+<td>Запомнить значение под именем</td>
+</tr>
+<tr>
+<td><code>a == b</code></td>
+<td>Проверить равенство</td>
+</tr>
+<tr>
+<td><code>a != b</code></td>
+<td>Проверить неравенство</td>
+</tr>
+<tr>
+<td><code>if condition:</code></td>
+<td>Выполнить блок при верном условии</td>
+</tr>
+<tr>
+<td><code>else:</code></td>
+<td>Выполнить другую ветку</td>
+</tr>
+<tr>
+<td><code>def name(...):</code></td>
+<td>Объявить функцию</td>
+</tr>
+<tr>
+<td><code>return value</code></td>
+<td>Закончить функцию и вернуть результат</td>
+</tr>
+<tr>
+<td><code>class X(Y):</code></td>
+<td>Создать класс X на основе Y</td>
+</tr>
+<tr>
+<td><code>self</code></td>
+<td>Текущий экземпляр объекта</td>
+</tr>
+<tr>
+<td><code>[]</code></td>
+<td>Список значений</td>
+</tr>
+<tr>
+<td><code>{key: value}</code></td>
+<td>Словарь: значение можно найти по ключу</td>
+</tr>
+<tr>
+<td><code>for x in items:</code></td>
+<td>Повторить действие для каждого элемента</td>
+</tr>
+<tr>
+<td><code>raise ...</code></td>
+<td>Сообщить ошибку и остановить обычное выполнение</td>
+</tr>
+<tr>
+<td><code>from x import y</code></td>
+<td>Взять нужную функцию или класс из другого модуля</td>
+</tr>
+</tbody>
+</table>
+<p>Двоеточие начинает блок, отступ показывает, какие строки входят в него. В Python нельзя произвольно убирать отступы. Комментарий начинается с # и не выполняется.</p>
+<h2>4. Регулярки без заучивания всей строки</h2>
+<p>Логин: <code>\A[A-Za-z0-9]{6,50}\Z</code>.</p>
+<ul>
+<li>\A и \Z — начало и конец всей строки.</li>
+<li>Квадратные скобки задают один допустимый символ.</li>
+<li>A-Z и a-z — латинские буквы, 0-9 — цифры.</li>
+<li>{6,50} — длина от шести до пятидесяти.</li>
+</ul>
+<p>Телефон: <code>8\([0-9]{3}\)[0-9]{3}-[0-9]{2}-[0-9]{2}</code>.</p>
+<ul>
+<li>8, скобки и дефисы должны присутствовать буквально.</li>
+<li>Обратный слеш перед скобкой говорит: «Это символ скобки, не группа».</li>
+<li>{3} означает ровно три цифры, {2} — две.</li>
+</ul>
+<p>ФИО: кириллическое слово, затем сколько угодно повторений «пробел + слово». Ё/ё добавлены отдельно. Пустое имя и латиница не подходят. Дефис не разрешён, потому что выбранное правило задания допускает кириллицу и пробелы.</p>
+<p>В raw-строке <code>r"..."</code> Python не обрабатывает обратные слеши раньше регулярного выражения. Поэтому их проще читать.</p>
+<h2>5. Как тренироваться</h2>
+<p>Не переписывай сразу весь готовый файл. Сделай маленькую часть, запусти её при возможности, объясни её вслух, затем закрой образец и напиши снова.</p>
+<p>Сначала достаточно уметь самостоятельно написать модель Course и вывести её список. Затем добавь модель Application и пустую форму. Потом сделай POST, проверку и сохранение. Только после этого подключай владельца, вход, отзыв и админку.</p>
+<p>Критерий понимания простой: ты можешь изменить требование, а не только повторить строки. Например, добавить комментарий к заявке и объяснить, какие файлы придётся изменить. Такие упражнения есть в PRAKTIKA.md.</p>
+<p><strong>Миграции и тесты не учи первыми.</strong> Миграции генерирует Django, а тесты помогают проверить уже написанное. Читай текущие models/forms/views/templates, а не старую историю изменения схемы.</p></section>
+<section id="practice"><h1>Практика: от маленького примера к самостоятельной работе</h1>
+<p>Работай в отдельной тренировочной папке или ветке, чтобы можно было сравнивать с образцом. Сначала попробуй решить без подглядывания, затем сверяйся. Если читаешь без компьютера, записывай ответ на бумаге и объясняй, что попадёт в каждую переменную.</p>
+<h2>1. Модели</h2>
+<ol>
+<li>Напиши Course с одним полем title. Объясни max_length и unique.</li>
+<li>Добавь <strong>str</strong>. Предскажи, что изменится в выпадающем списке.</li>
+<li>Напиши Application с course, user и start_date. Нарисуй связи.</li>
+<li>Добавь статус с default new. Почему форму не нужно просить прислать начальный статус?</li>
+<li>Не глядя в образец, напиши две команды создания и применения миграции.</li>
+</ol>
+<h2>2. Форма и сохранение</h2>
+<ol>
+<li>Напиши ModelForm, принимающую только курс и дату. Почему user не включён?</li>
+<li>Напиши view: GET → пустая форма; POST → проверка. Сначала просто покажи данные, потом добавь сохранение.</li>
+<li>Добавь commit=False и владельца из request.user. Объясни, в какой момент объект попадает в БД.</li>
+<li>Сделай redirect после сохранения. Что произойдёт при обновлении следующей страницы?</li>
+<li>Выведи ошибки под полями, а не одним общим сообщением сверху.</li>
+</ol>
+<h2>3. Личный кабинет</h2>
+<ol>
+<li>Выведи только заявки вошедшего пользователя. Почему objects.all здесь неправильно?</li>
+<li>Напиши цикл for в HTML и ветку empty для пустого списка.</li>
+<li>Добавь отображение даты ДД.ММ.ГГГГ и русской подписи статуса.</li>
+<li>Сделай форму отзыва только для completed. Затем объясни, почему ту же проверку нужно добавить во view.</li>
+<li>Попробуй получить заявку по чужому id. Напиши условие, которое запретит это.</li>
+</ol>
+<h2>4. Вход и администратор</h2>
+<ol>
+<li>Подключи AuthenticationForm. Найди, где проверяется пароль и где создаётся сессия.</li>
+<li>Напиши отдельный if для is_staff после входа.</li>
+<li>Закрой панель и обработчик статуса обычному пользователю. Почему недостаточно скрыть ссылку?</li>
+<li>Сделай ChoiceField для статуса. Что произойдёт с присланным значением hacked?</li>
+<li>Добавь фильтр GET и Paginator по пять записей. Сохрани фильтр в ссылке на следующую страницу.</li>
+</ol>
+<h2>5. Маленькое изменение требования</h2>
+<p>Добавь к заявке необязательное поле «Комментарий» до 300 символов. Самостоятельно реши:</p>
+<ul>
+<li>Что добавить в Application?</li>
+<li>Что добавить в ApplicationForm.Meta.fields?</li>
+<li>Нужно ли менять универсальный шаблон form.html, который уже перебирает поля?</li>
+<li>Как вывести комментарий в кабинете?</li>
+<li>Какие команды нужны для БД?</li>
+</ul>
+<p><strong>Подсказка после попытки:</strong> модель и форма меняются, универсальная форма сама покажет новое поле; для отображения в карточке потребуется отдельная строка HTML. После изменения модели нужна миграция. Владелец и статус остаются серверными полями.</p>
+<h2>6. Вопросы для самопроверки</h2>
+<table>
+<thead>
+<tr>
+<th>Вопрос</th>
+<th>Короткий ответ для проверки после своей попытки</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>GET и POST чем отличаются?</td>
+<td>GET просматривает, POST передаёт действие с данными</td>
+</tr>
+<tr>
+<td>Где лежат сырые поля отправленной формы?</td>
+<td>request.POST</td>
+</tr>
+<tr>
+<td>Где лежат проверенные значения?</td>
+<td>form.cleaned_data после is_valid</td>
+</tr>
+<tr>
+<td>Что делает save(commit=False)?</td>
+<td>Возвращает объект без записи в БД</td>
+</tr>
+<tr>
+<td>Что такое request.user?</td>
+<td>Пользователь, определённый Django по сессии</td>
+</tr>
+<tr>
+<td>Почему пароль нельзя присваивать напрямую?</td>
+<td>Нужен хеш: UserCreationForm, create_user или set_password</td>
+</tr>
+<tr>
+<td>Почему Admin из пяти букв входит?</td>
+<td>Минимум шесть применяется к регистрации, а не ко входу существующего аккаунта</td>
+</tr>
+<tr>
+<td>Что делает login_required?</td>
+<td>Не допускает гостя до личной функции</td>
+</tr>
+<tr>
+<td>Что делает csrf_token?</td>
+<td>Добавляет защитный токен формы, проверяемый сервером</td>
+</tr>
+<tr>
+<td>Как не показать чужие заявки?</td>
+<td>Отфильтровать по user=request.user до передачи в HTML</td>
+</tr>
+<tr>
+<td>Как защитить отдельную заявку?</td>
+<td>Получать её одновременно по pk и владельцу</td>
+</tr>
+<tr>
+<td>Что даёт is_staff?</td>
+<td>В этой работе это роль администратора из БД</td>
+</tr>
+<tr>
+<td>Почему проверка роли нужна во view?</td>
+<td>Ссылку можно скрыть, но прямой HTTP-запрос всё равно возможен</td>
+</tr>
+<tr>
+<td>Как получить русскую подпись choices?</td>
+<td>get_имя_поля_display</td>
+</tr>
+<tr>
+<td>Как сохранить сообщение после redirect?</td>
+<td>messages.success или messages.error</td>
+</tr>
+<tr>
+<td>Что нужно выполнить после изменения модели?</td>
+<td>makemigrations, затем migrate</td>
+</tr>
+<tr>
+<td>Что из проекта не нужно писать вручную?</td>
+<td>Сгенерированные миграции, код Django и служебный каркас</td>
+</tr>
+</tbody>
+</table>
+<h2>7. Пробная самостоятельная сборка</h2>
+<p>Закрой готовые models/forms/views. На чистом листе сначала напиши названия трёх моделей и семи пользовательских действий. Потом реализуй их по одному. Не начинай с CSS. Для каждого действия проговори: кто имеет доступ, откуда приходят данные, что проверяем, что сохраняем и какой ответ возвращаем.</p>
+<p>Если не можешь вспомнить конкретный параметр Django, сначала объясни словами нужное действие. Затем найди одну соответствующую строку в образце и перепиши её осознанно, а не копируй всю функцию.</p></section>
+<section id="checks"><h1>Проверка простой учебной версии</h1>
+<h2>Что проверено</h2>
+<ul>
+<li><code>python manage.py check</code> — ошибок конфигурации нет.</li>
+<li><code>python manage.py test</code> — 12 тестов пройдено.</li>
+<li><code>python manage.py makemigrations --check --dry-run</code> — модель и история миграций согласованы.</li>
+<li>Каждая непустая строка Python проверена на наличие поясняющего комментария.</li>
+<li>Логика JavaScript отдельно проверена: ровно 4 кадра, движение по кругу, интервал 3000 мс, aria-hidden, надпись отправки и восстановление кнопки.</li>
+<li>SQL и ER обновлены по фактической упрощённой SQLite, старые поля в них не оставлены.</li>
+<li>Мобильные макеты пересозданы из новых шаблонов с вымышленными учебными данными.</li>
+</ul>
+<p>12 серверных тестов проверяют регистрацию и хеш пароля, недопустимые поля, дубликат логина, вход Admin, выход через POST, закрытый кабинет, назначение владельца заявки, формат и существование даты, выбор курса и оплаты, запрет чужого отзыва, отзыв только после завершения, экранирование HTML, права администратора, фильтр, страницы списка, сохранение статуса и CSRF.</p>
+<p>Визуальная проверка настоящим Chromium в этой среде недоступна из-за системного запрета Unix-сокетов. Серверные тесты и проверка JS не заменяют просмотр в браузере. Для подготовки проверь пять страниц при 390×844 и на широком экране: поля, переносы, стрелки слайдера, картинки и отсутствие горизонтальной прокрутки.</p>
+<h2>Соответствие присланному официальному заданию</h2>
+<table>
+<thead>
+<tr>
+<th>Требование</th>
+<th>Реализация</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Полный стек и ООП</td>
+<td>Django, наследование моделей/форм, SQLite, HTML/CSS/JS</td>
+</tr>
+<tr>
+<td>Регистрация: уникальный логин, пароль, ФИО, телефон, email</td>
+<td>RegisterForm и UserCreationForm</td>
+</tr>
+<tr>
+<td>Проверки и сообщения на форме</td>
+<td>Django forms, HTML-атрибуты и вывод field.errors</td>
+</tr>
+<tr>
+<td>Вход и точный текст ссылки</td>
+<td>AuthenticationForm и form.html</td>
+</tr>
+<tr>
+<td>Просмотр своих заявок</td>
+<td>filter(user=request.user)</td>
+</tr>
+<tr>
+<td>Курс, дата ДД.ММ.ГГГГ и два способа оплаты</td>
+<td>ApplicationForm</td>
+</tr>
+<tr>
+<td>Три заданных курса</td>
+<td>Команда seed и таблица Course</td>
+</tr>
+<tr>
+<td>Администратор видит заявки всех</td>
+<td>dashboard_view с проверкой is_staff</td>
+</tr>
+<tr>
+<td>Смена на любой допустимый статус</td>
+<td>StatusForm и status_view</td>
+</tr>
+<tr>
+<td>Отзыв только после завершения</td>
+<td>Проверка владельца и статуса в review_view</td>
+</tr>
+<tr>
+<td>Фильтр, сообщения и пагинация</td>
+<td>GET status, messages, Paginator по 5 записей</td>
+</tr>
+<tr>
+<td>Ровно 4 одинаковых изображения, 3 секунды, стрелки</td>
+<td>4 фото 800×450, slider.html и app.js</td>
+</tr>
+<tr>
+<td>Медиа из приложения</td>
+<td>Логотип image01 и фото image06–09 из второго архива</td>
+</tr>
+<tr>
+<td>Мобильные HTML 390×844</td>
+<td>Пять файлов в mobile/</td>
+</tr>
+<tr>
+<td>Адаптив, анимации и качество кода</td>
+<td>Короткий CSS с media query, появление карточек, fade слайдов, индикатор</td>
+</tr>
+<tr>
+<td>Схема и связи БД</td>
+<td>db/schema.sql и db/er_diagram.svg</td>
+</tr>
+</tbody>
+</table>
+<p>ER автоматически нарисована по фактической SQLite. Если эксперт требует экспорт именно через DBeaver/Workbench/pgAdmin, открой выданную БД в разрешённой программе и сохрани её ER отдельным изображением. Это действие выполняется на площадке, готовый SVG нельзя называть скриншотом DBeaver.</p>
+<p>SQLite — один из вариантов из пособия. На подготовительном этапе нужно сверить разрешённую СУБД и подключение к серверу площадки. Миграции исходников не заменяют самостоятельное проектирование БД в день экзамена.</p>
+<h2>Что специально осталось простым</h2>
+<p>Нет дополнительных механизмов блокировки конкурентных запросов, своих декораторов и отдельных слоёв сервисов. Формы и права проверяются сервером, пароли хешируются стандартным Django. Это понятный учебный вариант для воспроизведения, не шаблон публичной системы с высокой нагрузкой.</p>
+<p>Каждая непустая строка написанного кода пояснена по просьбе пользователя. Сгенерированные миграции тоже снабжены комментариями, но начинать обучение с них не нужно.</p></section>
+<section id="sources"><h1>Строка кода → объяснение</h1><p>Раскрывай файлы по порядку. В самом проекте это же объяснение написано комментарием справа; здесь оно вынесено отдельно, чтобы удобнее читать с телефона.</p>
+<details><summary>portal/models.py</summary><ol class="source-lines">
+<li class="source-line"><span class="number">СТРОКА 1</span><code class="source-code">from django.contrib.auth.models import AbstractUser</code><p class="explanation">Берём готового пользователя Django: у него уже есть логин, пароль и права.</p></li>
+<li class="source-line"><span class="number">СТРОКА 2</span><code class="source-code">from django.db import models</code><p class="explanation">Подключаем классы, с помощью которых Python описывает таблицы базы данных.</p></li>
+<li class="source-line"><span class="number">СТРОКА 3</span><code class="source-code">STATUSES = [</code><p class="explanation">Список вариантов статуса: слева значение в БД, справа понятная подпись на сайте.</p></li>
+<li class="source-line"><span class="number">СТРОКА 4</span><code class="source-code">    (&quot;new&quot;, &quot;Новая&quot;),</code><p class="explanation">Этот статус получает только что созданная заявка.</p></li>
+<li class="source-line"><span class="number">СТРОКА 5</span><code class="source-code">    (&quot;studying&quot;, &quot;Идет обучение&quot;),</code><p class="explanation">Администратор ставит этот статус, когда обучение началось.</p></li>
+<li class="source-line"><span class="number">СТРОКА 6</span><code class="source-code">    (&quot;completed&quot;, &quot;Обучение завершено&quot;),</code><p class="explanation">После этого статуса пользователь может написать отзыв.</p></li>
+<li class="source-line"><span class="number">СТРОКА 7</span><code class="source-code">]</code><p class="explanation">Заканчиваем список статусов.</p></li>
+<li class="source-line"><span class="number">СТРОКА 8</span><code class="source-code">PAYMENTS = [(&quot;cash&quot;, &quot;Наличными&quot;), (&quot;phone_transfer&quot;, &quot;Переводом по номеру телефона&quot;)]</code><p class="explanation">Допустимы ровно два способа оплаты из задания.</p></li>
+<li class="source-line"><span class="number">СТРОКА 9</span><code class="source-code">class User(AbstractUser):</code><p class="explanation">Создаём своего пользователя на основе готового, а не пишем авторизацию самостоятельно.</p></li>
+<li class="source-line"><span class="number">СТРОКА 10</span><code class="source-code">    full_name = models.CharField(&quot;ФИО&quot;, max_length=150)</code><p class="explanation">Добавляем строковое поле ФИО длиной до 150 символов.</p></li>
+<li class="source-line"><span class="number">СТРОКА 11</span><code class="source-code">    phone = models.CharField(&quot;Телефон&quot;, max_length=16)</code><p class="explanation">Телефон храним строкой, поскольку в нём есть скобки и дефисы.</p></li>
+<li class="source-line"><span class="number">СТРОКА 12</span><code class="source-code">class Course(models.Model):</code><p class="explanation">Этот класс превращается в таблицу курсов: одна строка таблицы — один курс.</p></li>
+<li class="source-line"><span class="number">СТРОКА 13</span><code class="source-code">    title = models.CharField(&quot;Название&quot;, max_length=200, unique=True)</code><p class="explanation">Названия курсов не должны повторяться: за это отвечает unique=True.</p></li>
+<li class="source-line"><span class="number">СТРОКА 14</span><code class="source-code">    def __str__(self):</code><p class="explanation">Этот метод объясняет Django, как показать объект курса в виде текста.</p></li>
+<li class="source-line"><span class="number">СТРОКА 15</span><code class="source-code">        return self.title</code><p class="explanation">В выпадающем списке будет название курса, а не техническое «Course object».</p></li>
+<li class="source-line"><span class="number">СТРОКА 16</span><code class="source-code">class Application(models.Model):</code><p class="explanation">Этот класс описывает одну заявку на обучение.</p></li>
+<li class="source-line"><span class="number">СТРОКА 17</span><code class="source-code">    user = models.ForeignKey(User, on_delete=models.PROTECT)</code><p class="explanation">Связываем заявку с владельцем; пользователя с заявками нельзя удалить случайно.</p></li>
+<li class="source-line"><span class="number">СТРОКА 18</span><code class="source-code">    course = models.ForeignKey(Course, on_delete=models.PROTECT)</code><p class="explanation">Связываем заявку с одним курсом; название не копируем в каждую заявку.</p></li>
+<li class="source-line"><span class="number">СТРОКА 19</span><code class="source-code">    start_date = models.DateField(&quot;Дата начала обучения&quot;)</code><p class="explanation">Храним настоящую дату: это позволяет проверить, существует ли такой день.</p></li>
+<li class="source-line"><span class="number">СТРОКА 20</span><code class="source-code">    payment_method = models.CharField(&quot;Способ оплаты&quot;, max_length=20, choices=PAYMENTS)</code><p class="explanation">choices ограничивает выбор двумя способами оплаты.</p></li>
+<li class="source-line"><span class="number">СТРОКА 21</span><code class="source-code">    status = models.CharField(&quot;Статус&quot;, max_length=20, choices=STATUSES, default=&quot;new&quot;, db_index=True)</code><p class="explanation">Новая заявка начинается с new; индекс помогает фильтровать по статусу.</p></li>
+<li class="source-line"><span class="number">СТРОКА 22</span><code class="source-code">    review_text = models.TextField(&quot;Отзыв&quot;, blank=True, default=&quot;&quot;)</code><p class="explanation">Отзыв необязателен, поэтому сначала здесь пустая строка.</p></li>
+<li class="source-line"><span class="number">СТРОКА 23</span><code class="source-code">    class Meta:</code><p class="explanation">В этом вложенном классе задаём общие настройки таблицы заявок.</p></li>
+<li class="source-line"><span class="number">СТРОКА 24</span><code class="source-code">        ordering = [&quot;-id&quot;]</code><p class="explanation">Минус означает убывание: заявки с большим id показываются раньше.</p></li>
+</ol></details>
+<details><summary>portal/forms.py</summary><ol class="source-lines">
+<li class="source-line"><span class="number">СТРОКА 1</span><code class="source-code">from django import forms</code><p class="explanation">Подключаем формы: они показывают поля и проверяют введённые значения.</p></li>
+<li class="source-line"><span class="number">СТРОКА 2</span><code class="source-code">from django.contrib.auth.forms import UserCreationForm</code><p class="explanation">Готовая регистрация умеет сравнивать пароли и безопасно сохранять их хеш.</p></li>
+<li class="source-line"><span class="number">СТРОКА 3</span><code class="source-code">from .models import Application, STATUSES, User</code><p class="explanation">Берём наши модели и список статусов из соседнего файла models.py.</p></li>
+<li class="source-line"><span class="number">СТРОКА 4</span><code class="source-code">class RegisterForm(UserCreationForm):</code><p class="explanation">Наследуем готовую форму, чтобы не писать сохранение пароля с нуля.</p></li>
+<li class="source-line"><span class="number">СТРОКА 5</span><code class="source-code">    username = forms.RegexField(label=&quot;Логин&quot;, regex=r&quot;\A[A-Za-z0-9]{6,50}\Z&quot;, max_length=50, min_length=6, widget=forms.TextInput(attrs={&quot;pattern&quot;: &quot;[A-Za-z0-9]{6,50}&quot;}))</code><p class="explanation">Разрешаем 6–50 латинских букв и цифр; pattern проверяет это также в браузере.</p></li>
+<li class="source-line"><span class="number">СТРОКА 6</span><code class="source-code">    full_name = forms.RegexField(label=&quot;ФИО&quot;, regex=r&quot;\A[А-Яа-яЁё]+(?: [А-Яа-яЁё]+)*\Z&quot;, max_length=150, widget=forms.TextInput(attrs={&quot;pattern&quot;: &quot;[А-Яа-яЁё]+( [А-Яа-яЁё]+)*&quot;}))</code><p class="explanation">Разрешаем кириллицу и пробел между словами; Ё и ё указаны отдельно.</p></li>
+<li class="source-line"><span class="number">СТРОКА 7</span><code class="source-code">    phone = forms.RegexField(label=&quot;Телефон&quot;, regex=r&quot;\A8\([0-9]{3}\)[0-9]{3}-[0-9]{2}-[0-9]{2}\Z&quot;, widget=forms.TextInput(attrs={&quot;placeholder&quot;: &quot;8(999)123-45-67&quot;, &quot;pattern&quot;: r&quot;8\([0-9]{3}\)[0-9]{3}-[0-9]{2}-[0-9]{2}&quot;}))</code><p class="explanation">Проверяем точный формат телефона; обратная косая черта делает скобки обычными символами.</p></li>
+<li class="source-line"><span class="number">СТРОКА 8</span><code class="source-code">    email = forms.EmailField(label=&quot;Email&quot;)</code><p class="explanation">Обязательное поле проверяет формат адреса и выводит в HTML input type=email.</p></li>
+<li class="source-line"><span class="number">СТРОКА 9</span><code class="source-code">    password1 = forms.CharField(label=&quot;Пароль&quot;, min_length=8, strip=False, widget=forms.PasswordInput(attrs={&quot;minlength&quot;: 8}))</code><p class="explanation">Пароль не короче восьми символов; strip=False не удаляет пробелы из пароля.</p></li>
+<li class="source-line"><span class="number">СТРОКА 10</span><code class="source-code">    password2 = forms.CharField(label=&quot;Повторите пароль&quot;, strip=False, widget=forms.PasswordInput)</code><p class="explanation">Повтор нужен для проверки опечатки; сравнение уже есть в родительской форме.</p></li>
+<li class="source-line"><span class="number">СТРОКА 11</span><code class="source-code">    class Meta:</code><p class="explanation">Здесь говорим ModelForm, с какой таблицей и полями работать.</p></li>
+<li class="source-line"><span class="number">СТРОКА 12</span><code class="source-code">        model = User</code><p class="explanation">Результатом регистрации будет новый объект User.</p></li>
+<li class="source-line"><span class="number">СТРОКА 13</span><code class="source-code">        fields = [&quot;username&quot;, &quot;full_name&quot;, &quot;phone&quot;, &quot;email&quot;]</code><p class="explanation">Административных полей нет: посетитель не может сам назначить себе права.</p></li>
+<li class="source-line"><span class="number">СТРОКА 14</span><code class="source-code">class ApplicationForm(forms.ModelForm):</code><p class="explanation">Эта форма умеет создать заявку по проверенным полям.</p></li>
+<li class="source-line"><span class="number">СТРОКА 15</span><code class="source-code">    start_date = forms.DateField(label=&quot;Дата начала обучения&quot;, input_formats=[&quot;%d.%m.%Y&quot;], widget=forms.TextInput(attrs={&quot;placeholder&quot;: &quot;ДД.ММ.ГГГГ&quot;, &quot;pattern&quot;: r&quot;[0-9]{2}\.[0-9]{2}\.[0-9]{4}&quot;}))</code><p class="explanation">Человек вводит ДД.ММ.ГГГГ; DateField проверяет существование даты, например отвергает 31 февраля.</p></li>
+<li class="source-line"><span class="number">СТРОКА 16</span><code class="source-code">    class Meta:</code><p class="explanation">Настраиваем связь формы с моделью заявки.</p></li>
+<li class="source-line"><span class="number">СТРОКА 17</span><code class="source-code">        model = Application</code><p class="explanation">Сохранять будем объект Application.</p></li>
+<li class="source-line"><span class="number">СТРОКА 18</span><code class="source-code">        fields = [&quot;course&quot;, &quot;start_date&quot;, &quot;payment_method&quot;]</code><p class="explanation">Владельца и статус пользователь не вводит: их задаст сервер.</p></li>
+<li class="source-line"><span class="number">СТРОКА 19</span><code class="source-code">        labels = {&quot;course&quot;: &quot;Курс&quot;}</code><p class="explanation">Заменяем техническое название поля course русской подписью.</p></li>
+<li class="source-line"><span class="number">СТРОКА 20</span><code class="source-code">        widgets = {&quot;payment_method&quot;: forms.RadioSelect}</code><p class="explanation">Вместо списка способы оплаты показываются двумя радиокнопками.</p></li>
+<li class="source-line"><span class="number">СТРОКА 21</span><code class="source-code">    def clean_start_date(self):</code><p class="explanation">Django вызывает этот метод, когда базовая проверка даты уже прошла.</p></li>
+<li class="source-line"><span class="number">СТРОКА 22</span><code class="source-code">        text = self.data[&quot;start_date&quot;]</code><p class="explanation">Берём исходную строку, чтобы убедиться в наличии ведущих нулей.</p></li>
+<li class="source-line"><span class="number">СТРОКА 23</span><code class="source-code">        value = self.cleaned_data[&quot;start_date&quot;]</code><p class="explanation">Берём уже проверенный объект даты, полученный от DateField.</p></li>
+<li class="source-line"><span class="number">СТРОКА 24</span><code class="source-code">        if text != value.strftime(&quot;%d.%m.%Y&quot;):</code><p class="explanation">Сравниваем введённую строку с точным форматом: 1.1.2027 не равно 01.01.2027.</p></li>
+<li class="source-line"><span class="number">СТРОКА 25</span><code class="source-code">            raise forms.ValidationError(&quot;Введите дату в формате ДД.ММ.ГГГГ.&quot;)</code><p class="explanation">Django покажет эту ошибку под полем, а не сохранит заявку.</p></li>
+<li class="source-line"><span class="number">СТРОКА 26</span><code class="source-code">        return value</code><p class="explanation">Возвращаем корректную дату обратно в данные формы.</p></li>
+<li class="source-line"><span class="number">СТРОКА 27</span><code class="source-code">class ReviewForm(forms.ModelForm):</code><p class="explanation">Отдельная форма позволяет менять отзыв, не затрагивая владельца и статус.</p></li>
+<li class="source-line"><span class="number">СТРОКА 28</span><code class="source-code">    review_text = forms.CharField(label=&quot;Ваш отзыв&quot;, max_length=2000, widget=forms.Textarea(attrs={&quot;rows&quot;: 3}))</code><p class="explanation">Отзыв обязателен, ограничен 2000 символами и вводится в многострочное поле.</p></li>
+<li class="source-line"><span class="number">СТРОКА 29</span><code class="source-code">    class Meta:</code><p class="explanation">Настраиваем единственное редактируемое поле.</p></li>
+<li class="source-line"><span class="number">СТРОКА 30</span><code class="source-code">        model = Application</code><p class="explanation">Отзыв хранится прямо в заявке.</p></li>
+<li class="source-line"><span class="number">СТРОКА 31</span><code class="source-code">        fields = [&quot;review_text&quot;]</code><p class="explanation">Другие поля заявки эта форма не принимает.</p></li>
+<li class="source-line"><span class="number">СТРОКА 32</span><code class="source-code">class StatusForm(forms.Form):</code><p class="explanation">Простая форма проверит статус, присланный администратором.</p></li>
+<li class="source-line"><span class="number">СТРОКА 33</span><code class="source-code">    status = forms.ChoiceField(choices=STATUSES)</code><p class="explanation">ChoiceField отвергнет любое значение, которого нет в нашем списке статусов.</p></li>
+</ol></details>
+<details><summary>portal/views.py</summary><ol class="source-lines">
+<li class="source-line"><span class="number">СТРОКА 1</span><code class="source-code">from django.contrib import messages</code><p class="explanation">Сообщения объясняют результат действия после перехода на другую страницу.</p></li>
+<li class="source-line"><span class="number">СТРОКА 2</span><code class="source-code">from django.contrib.auth import login, logout</code><p class="explanation">Готовые функции создают и завершают сессию пользователя.</p></li>
+<li class="source-line"><span class="number">СТРОКА 3</span><code class="source-code">from django.contrib.auth.decorators import login_required</code><p class="explanation">Этот декоратор не пускает гостя на личные страницы.</p></li>
+<li class="source-line"><span class="number">СТРОКА 4</span><code class="source-code">from django.contrib.auth.forms import AuthenticationForm</code><p class="explanation">Готовая форма проверяет существующего пользователя и пароль.</p></li>
+<li class="source-line"><span class="number">СТРОКА 5</span><code class="source-code">from django.core.exceptions import PermissionDenied</code><p class="explanation">Это исключение возвращает HTTP 403: действие запрещено.</p></li>
+<li class="source-line"><span class="number">СТРОКА 6</span><code class="source-code">from django.core.paginator import Paginator</code><p class="explanation">Paginator разбивает длинный список на несколько страниц.</p></li>
+<li class="source-line"><span class="number">СТРОКА 7</span><code class="source-code">from django.shortcuts import get_object_or_404, redirect, render</code><p class="explanation">Эти помощники получают запись, перенаправляют и показывают HTML.</p></li>
+<li class="source-line"><span class="number">СТРОКА 8</span><code class="source-code">from django.views.decorators.http import require_POST</code><p class="explanation">Запрещаем изменять данные простым открытием ссылки через GET.</p></li>
+<li class="source-line"><span class="number">СТРОКА 9</span><code class="source-code">from .forms import ApplicationForm, RegisterForm, ReviewForm, StatusForm</code><p class="explanation">Подключаем формы нашего приложения.</p></li>
+<li class="source-line"><span class="number">СТРОКА 10</span><code class="source-code">from .models import Application, STATUSES</code><p class="explanation">Подключаем таблицу заявок и варианты статусов.</p></li>
+<li class="source-line"><span class="number">СТРОКА 12</span><code class="source-code">def register_view(request):</code><p class="explanation">Django вызывает функцию, когда открыт адрес регистрации.</p></li>
+<li class="source-line"><span class="number">СТРОКА 13</span><code class="source-code">    form = RegisterForm(request.POST if request.method == &quot;POST&quot; else None)</code><p class="explanation">При POST связываем форму с отправленными полями; при GET показываем пустую.</p></li>
+<li class="source-line"><span class="number">СТРОКА 14</span><code class="source-code">    if request.method == &quot;POST&quot; and form.is_valid():</code><p class="explanation">Проверяем, что форму отправили и все поля прошли серверную проверку.</p></li>
+<li class="source-line"><span class="number">СТРОКА 15</span><code class="source-code">        form.save()</code><p class="explanation">Родительский UserCreationForm сохраняет пользователя с хешем пароля.</p></li>
+<li class="source-line"><span class="number">СТРОКА 16</span><code class="source-code">        return redirect(&quot;login&quot;)</code><p class="explanation">После регистрации предлагаем войти; браузер выполняет новый GET-запрос.</p></li>
+<li class="source-line"><span class="number">СТРОКА 17</span><code class="source-code">    return render(request, &quot;portal/form.html&quot;, {&quot;form&quot;: form, &quot;title&quot;: &quot;Регистрация&quot;, &quot;button&quot;: &quot;Зарегистрироваться&quot;, &quot;kind&quot;: &quot;register&quot;})</code><p class="explanation">Показываем форму; ошибки остаются рядом с её полями.</p></li>
+<li class="source-line"><span class="number">СТРОКА 19</span><code class="source-code">def login_view(request):</code><p class="explanation">Одна форма входа обслуживает пользователя и администратора.</p></li>
+<li class="source-line"><span class="number">СТРОКА 20</span><code class="source-code">    form = AuthenticationForm(request, data=request.POST if request.method == &quot;POST&quot; else None)</code><p class="explanation">Передаём готовой форме запрос и введённые логин/пароль.</p></li>
+<li class="source-line"><span class="number">СТРОКА 21</span><code class="source-code">    form.fields[&quot;username&quot;].label = &quot;Логин&quot;</code><p class="explanation">Делаем подпись стандартной формы понятной и соответствующей заданию.</p></li>
+<li class="source-line"><span class="number">СТРОКА 22</span><code class="source-code">    if request.method == &quot;POST&quot; and form.is_valid():</code><p class="explanation">При неверных данных не создаём сессию, а ниже показываем ошибки формы.</p></li>
+<li class="source-line"><span class="number">СТРОКА 23</span><code class="source-code">        login(request, form.get_user())</code><p class="explanation">Запоминаем вошедшего пользователя в сессии; пароль в cookie не помещается.</p></li>
+<li class="source-line"><span class="number">СТРОКА 24</span><code class="source-code">        if request.user.is_staff:</code><p class="explanation">Проверяем флаг администратора, который хранится в БД.</p></li>
+<li class="source-line"><span class="number">СТРОКА 25</span><code class="source-code">            return redirect(&quot;dashboard&quot;)</code><p class="explanation">Администратора отправляем в общую панель заявок.</p></li>
+<li class="source-line"><span class="number">СТРОКА 26</span><code class="source-code">        return redirect(&quot;applications&quot;)</code><p class="explanation">Обычного пользователя отправляем к его заявкам.</p></li>
+<li class="source-line"><span class="number">СТРОКА 27</span><code class="source-code">    return render(request, &quot;portal/form.html&quot;, {&quot;form&quot;: form, &quot;title&quot;: &quot;Вход&quot;, &quot;button&quot;: &quot;Войти&quot;, &quot;kind&quot;: &quot;login&quot;})</code><p class="explanation">Возвращаем пустую форму или форму с ошибкой входа.</p></li>
+<li class="source-line"><span class="number">СТРОКА 29</span><code class="source-code">@login_required</code><p class="explanation">До входа в эту функцию проверяем, что пользователь авторизован.</p></li>
+<li class="source-line"><span class="number">СТРОКА 30</span><code class="source-code">@require_POST</code><p class="explanation">Выход разрешён только через POST-форму с CSRF-токеном.</p></li>
+<li class="source-line"><span class="number">СТРОКА 31</span><code class="source-code">def logout_view(request):</code><p class="explanation">Эта функция завершает текущую сессию.</p></li>
+<li class="source-line"><span class="number">СТРОКА 32</span><code class="source-code">    logout(request)</code><p class="explanation">Django удаляет данные входа из сессии.</p></li>
+<li class="source-line"><span class="number">СТРОКА 33</span><code class="source-code">    return redirect(&quot;login&quot;)</code><p class="explanation">После выхода открываем страницу входа.</p></li>
+<li class="source-line"><span class="number">СТРОКА 35</span><code class="source-code">@login_required</code><p class="explanation">Гостю нельзя просматривать личный кабинет.</p></li>
+<li class="source-line"><span class="number">СТРОКА 36</span><code class="source-code">def applications_view(request):</code><p class="explanation">Показываем заявки того, кто вошёл в аккаунт.</p></li>
+<li class="source-line"><span class="number">СТРОКА 37</span><code class="source-code">    items = Application.objects.filter(user=request.user)</code><p class="explanation">SQL-фильтр выбирает только собственные заявки, а не скрывает чужие в HTML.</p></li>
+<li class="source-line"><span class="number">СТРОКА 38</span><code class="source-code">    return render(request, &quot;portal/applications.html&quot;, {&quot;items&quot;: items})</code><p class="explanation">Передаём список в шаблон под именем items.</p></li>
+<li class="source-line"><span class="number">СТРОКА 40</span><code class="source-code">@login_required</code><p class="explanation">Чтобы создать заявку, нужно сначала войти.</p></li>
+<li class="source-line"><span class="number">СТРОКА 41</span><code class="source-code">def new_application_view(request):</code><p class="explanation">Обрабатываем создание новой заявки.</p></li>
+<li class="source-line"><span class="number">СТРОКА 42</span><code class="source-code">    form = ApplicationForm(request.POST if request.method == &quot;POST&quot; else None)</code><p class="explanation">GET показывает поля; POST приносит данные для проверки.</p></li>
+<li class="source-line"><span class="number">СТРОКА 43</span><code class="source-code">    if request.method == &quot;POST&quot; and form.is_valid():</code><p class="explanation">Ничего не сохраняем до проверки курса, даты и оплаты.</p></li>
+<li class="source-line"><span class="number">СТРОКА 44</span><code class="source-code">        item = form.save(commit=False)</code><p class="explanation">Получаем объект в памяти: commit=False означает «пока не записывай в БД».</p></li>
+<li class="source-line"><span class="number">СТРОКА 45</span><code class="source-code">        item.user = request.user</code><p class="explanation">Назначаем владельцем того, кто вошёл, а не пользователя из поддельного POST.</p></li>
+<li class="source-line"><span class="number">СТРОКА 46</span><code class="source-code">        item.save()</code><p class="explanation">Теперь сохраняем заявку; статус new возьмётся из default в модели.</p></li>
+<li class="source-line"><span class="number">СТРОКА 47</span><code class="source-code">        messages.success(request, &quot;Заявка создана.&quot;)</code><p class="explanation">Сохраняем короткое уведомление для следующей страницы.</p></li>
+<li class="source-line"><span class="number">СТРОКА 48</span><code class="source-code">        return redirect(&quot;applications&quot;)</code><p class="explanation">Возвращаемся к списку; обновление страницы не повторит предыдущий POST.</p></li>
+<li class="source-line"><span class="number">СТРОКА 49</span><code class="source-code">    return render(request, &quot;portal/form.html&quot;, {&quot;form&quot;: form, &quot;title&quot;: &quot;Новая заявка&quot;, &quot;button&quot;: &quot;Отправить заявку&quot;})</code><p class="explanation">При ошибках снова показываем заполненную форму.</p></li>
+<li class="source-line"><span class="number">СТРОКА 51</span><code class="source-code">@login_required</code><p class="explanation">Отзыв может отправить только вошедший пользователь.</p></li>
+<li class="source-line"><span class="number">СТРОКА 52</span><code class="source-code">@require_POST</code><p class="explanation">Запись текста отзыва выполняется через POST, а не открытие ссылки.</p></li>
+<li class="source-line"><span class="number">СТРОКА 53</span><code class="source-code">def review_view(request, pk):</code><p class="explanation">pk приходит из URL и означает номер конкретной заявки.</p></li>
+<li class="source-line"><span class="number">СТРОКА 54</span><code class="source-code">    item = get_object_or_404(Application, pk=pk, user=request.user)</code><p class="explanation">Ищем запись сразу с проверкой владельца: чужой номер даст 404.</p></li>
+<li class="source-line"><span class="number">СТРОКА 55</span><code class="source-code">    if item.status != &quot;completed&quot;:</code><p class="explanation">Даже если отправить форму вручную, сервер проверит завершение обучения.</p></li>
+<li class="source-line"><span class="number">СТРОКА 56</span><code class="source-code">        raise PermissionDenied(&quot;Отзыв доступен после завершения обучения.&quot;)</code><p class="explanation">Останавливаем обработку и возвращаем запрет 403.</p></li>
+<li class="source-line"><span class="number">СТРОКА 57</span><code class="source-code">    form = ReviewForm(request.POST, instance=item)</code><p class="explanation">instance связывает форму с существующей заявкой, чтобы обновить её, а не создать новую.</p></li>
+<li class="source-line"><span class="number">СТРОКА 58</span><code class="source-code">    if form.is_valid():</code><p class="explanation">Проверяем непустой текст и длину до 2000 символов.</p></li>
+<li class="source-line"><span class="number">СТРОКА 59</span><code class="source-code">        form.save()</code><p class="explanation">Сохраняем только разрешённое поле отзыва.</p></li>
+<li class="source-line"><span class="number">СТРОКА 60</span><code class="source-code">        messages.success(request, &quot;Отзыв сохранён.&quot;)</code><p class="explanation">Объясняем пользователю результат сохранения.</p></li>
+<li class="source-line"><span class="number">СТРОКА 61</span><code class="source-code">        return redirect(&quot;applications&quot;)</code><p class="explanation">После успешного POST открываем список заявок.</p></li>
+<li class="source-line"><span class="number">СТРОКА 62</span><code class="source-code">    return render(request, &quot;portal/form.html&quot;, {&quot;form&quot;: form, &quot;title&quot;: &quot;Отзыв&quot;, &quot;button&quot;: &quot;Сохранить&quot;})</code><p class="explanation">Некорректный текст не теряется: показываем его с ошибкой формы.</p></li>
+<li class="source-line"><span class="number">СТРОКА 64</span><code class="source-code">@login_required</code><p class="explanation">Панель тоже требует авторизованной сессии.</p></li>
+<li class="source-line"><span class="number">СТРОКА 65</span><code class="source-code">def dashboard_view(request):</code><p class="explanation">Показываем администратору заявки всех пользователей.</p></li>
+<li class="source-line"><span class="number">СТРОКА 66</span><code class="source-code">    if not request.user.is_staff:</code><p class="explanation">Вход в аккаунт сам по себе не даёт административную роль.</p></li>
+<li class="source-line"><span class="number">СТРОКА 67</span><code class="source-code">        raise PermissionDenied(&quot;Этот раздел только для администратора.&quot;)</code><p class="explanation">Обычный пользователь получает 403.</p></li>
+<li class="source-line"><span class="number">СТРОКА 68</span><code class="source-code">    items = Application.objects.all()</code><p class="explanation">Администратору разрешён список всех заявок.</p></li>
+<li class="source-line"><span class="number">СТРОКА 69</span><code class="source-code">    status = request.GET.get(&quot;status&quot;, &quot;&quot;)</code><p class="explanation">Читаем фильтр из адреса; если параметра нет, используем пустую строку.</p></li>
+<li class="source-line"><span class="number">СТРОКА 70</span><code class="source-code">    if status:</code><p class="explanation">Непустой фильтр означает, что выбран конкретный статус.</p></li>
+<li class="source-line"><span class="number">СТРОКА 71</span><code class="source-code">        items = items.filter(status=status)</code><p class="explanation">ORM безопасно подставляет значение в запрос к БД.</p></li>
+<li class="source-line"><span class="number">СТРОКА 72</span><code class="source-code">    page = Paginator(items, 5).get_page(request.GET.get(&quot;page&quot;))</code><p class="explanation">Делим результат на страницы по пять записей и выбираем нужную.</p></li>
+<li class="source-line"><span class="number">СТРОКА 73</span><code class="source-code">    return render(request, &quot;portal/dashboard.html&quot;, {&quot;page&quot;: page, &quot;statuses&quot;: STATUSES, &quot;selected&quot;: status})</code><p class="explanation">Передаём страницу записей, варианты статусов и текущий фильтр.</p></li>
+<li class="source-line"><span class="number">СТРОКА 75</span><code class="source-code">@login_required</code><p class="explanation">Отдельно защищаем обработчик записи статуса авторизацией.</p></li>
+<li class="source-line"><span class="number">СТРОКА 76</span><code class="source-code">@require_POST</code><p class="explanation">Менять состояние через GET нельзя.</p></li>
+<li class="source-line"><span class="number">СТРОКА 77</span><code class="source-code">def status_view(request, pk):</code><p class="explanation">pk — id заявки, для которой нажали кнопку «Сохранить».</p></li>
+<li class="source-line"><span class="number">СТРОКА 78</span><code class="source-code">    if not request.user.is_staff:</code><p class="explanation">Проверяем роль здесь тоже: злоумышленник может не открывать панель, а сразу прислать POST.</p></li>
+<li class="source-line"><span class="number">СТРОКА 79</span><code class="source-code">        raise PermissionDenied(&quot;Менять статус может только администратор.&quot;)</code><p class="explanation">Без нужной роли запрещаем изменение.</p></li>
+<li class="source-line"><span class="number">СТРОКА 80</span><code class="source-code">    item = get_object_or_404(Application, pk=pk)</code><p class="explanation">Загружаем нужную заявку или возвращаем 404.</p></li>
+<li class="source-line"><span class="number">СТРОКА 81</span><code class="source-code">    form = StatusForm(request.POST)</code><p class="explanation">Проверяем, что прислан один из трёх известных статусов.</p></li>
+<li class="source-line"><span class="number">СТРОКА 82</span><code class="source-code">    if form.is_valid():</code><p class="explanation">cleaned_data используем только после успешной проверки формы.</p></li>
+<li class="source-line"><span class="number">СТРОКА 83</span><code class="source-code">        new_status = form.cleaned_data[&quot;status&quot;]</code><p class="explanation">Здесь уже проверенное значение, а не сырой текст из браузера.</p></li>
+<li class="source-line"><span class="number">СТРОКА 84</span><code class="source-code">        item.status = new_status</code><p class="explanation">Записываем выбранный допустимый статус в объект заявки.</p></li>
+<li class="source-line"><span class="number">СТРОКА 85</span><code class="source-code">        item.save()</code><p class="explanation">Сохраняем изменение в базе данных.</p></li>
+<li class="source-line"><span class="number">СТРОКА 86</span><code class="source-code">        messages.success(request, &quot;Статус обновлён.&quot;)</code><p class="explanation">После перенаправления появится подтверждение сохранения.</p></li>
+<li class="source-line"><span class="number">СТРОКА 87</span><code class="source-code">    else:</code><p class="explanation">Обрабатываем неизвестный статус из поддельного запроса.</p></li>
+<li class="source-line"><span class="number">СТРОКА 88</span><code class="source-code">        messages.error(request, &quot;Выбран неизвестный статус.&quot;)</code><p class="explanation">Возвращаем понятную ошибку вместо записи случайного значения.</p></li>
+<li class="source-line"><span class="number">СТРОКА 89</span><code class="source-code">    return redirect(&quot;dashboard&quot;)</code><p class="explanation">После обработки открываем обновлённую панель.</p></li>
+</ol></details>
+<details><summary>portal/urls.py</summary><ol class="source-lines">
+<li class="source-line"><span class="number">СТРОКА 1</span><code class="source-code">from django.urls import path</code><p class="explanation">path связывает адрес с функцией view и даёт маршруту имя.</p></li>
+<li class="source-line"><span class="number">СТРОКА 2</span><code class="source-code">from . import views</code><p class="explanation">Импортируем обработчики из текущего пакета portal.</p></li>
+<li class="source-line"><span class="number">СТРОКА 3</span><code class="source-code">urlpatterns = [</code><p class="explanation">Django проверяет маршруты сверху вниз до первого совпадения.</p></li>
+<li class="source-line"><span class="number">СТРОКА 4</span><code class="source-code">    path(&quot;&quot;, views.login_view, name=&quot;home&quot;),</code><p class="explanation">Корень сайта показывает вход без необходимости помнить дополнительный путь.</p></li>
+<li class="source-line"><span class="number">СТРОКА 5</span><code class="source-code">    path(&quot;register/&quot;, views.register_view, name=&quot;register&quot;),</code><p class="explanation">Регистрация нового пользователя.</p></li>
+<li class="source-line"><span class="number">СТРОКА 6</span><code class="source-code">    path(&quot;login/&quot;, views.login_view, name=&quot;login&quot;),</code><p class="explanation">Авторизация пользователя или администратора.</p></li>
+<li class="source-line"><span class="number">СТРОКА 7</span><code class="source-code">    path(&quot;logout/&quot;, views.logout_view, name=&quot;logout&quot;),</code><p class="explanation">Защищённый POST для выхода.</p></li>
+<li class="source-line"><span class="number">СТРОКА 8</span><code class="source-code">    path(&quot;applications/&quot;, views.applications_view, name=&quot;applications&quot;),</code><p class="explanation">Личный список заявок.</p></li>
+<li class="source-line"><span class="number">СТРОКА 9</span><code class="source-code">    path(&quot;applications/new/&quot;, views.new_application_view, name=&quot;new_application&quot;),</code><p class="explanation">Форма записи на курс.</p></li>
+<li class="source-line"><span class="number">СТРОКА 10</span><code class="source-code">    path(&quot;applications/&lt;int:pk&gt;/review/&quot;, views.review_view, name=&quot;review&quot;),</code><p class="explanation">int:pk допускает только числовой идентификатор заявки.</p></li>
+<li class="source-line"><span class="number">СТРОКА 11</span><code class="source-code">    path(&quot;admin/&quot;, views.dashboard_view, name=&quot;dashboard&quot;),</code><p class="explanation">Собственная панель администратора с фильтром и пагинацией.</p></li>
+<li class="source-line"><span class="number">СТРОКА 12</span><code class="source-code">    path(&quot;admin/&lt;int:pk&gt;/status/&quot;, views.status_view, name=&quot;status&quot;),</code><p class="explanation">Отдельный POST-обработчик изменения статуса.</p></li>
+<li class="source-line"><span class="number">СТРОКА 13</span><code class="source-code">]</code><p class="explanation">Конец таблицы маршрутов приложения.</p></li>
+</ol></details>
+<details><summary>templates/base.html</summary><ol class="source-lines">
+<li class="source-line"><span class="number">СТРОКА 1</span><code class="source-code">{% load static %}</code><p class="explanation">Разрешаем использовать тег static для подключения локальных CSS и JavaScript.</p></li>
+<li class="source-line"><span class="number">СТРОКА 2</span><code class="source-code">&lt;!doctype html&gt;</code><p class="explanation">Говорим браузеру, что это современный HTML5.</p></li>
+<li class="source-line"><span class="number">СТРОКА 3</span><code class="source-code">&lt;html lang=&quot;ru&quot;&gt;</code><p class="explanation">Указываем русский язык страницы.</p></li>
+<li class="source-line"><span class="number">СТРОКА 4</span><code class="source-code">&lt;head&gt;</code><p class="explanation">Открываем служебную часть документа.</p></li>
+<li class="source-line"><span class="number">СТРОКА 5</span><code class="source-code">&lt;meta charset=&quot;utf-8&quot;&gt;</code><p class="explanation">Подключаем кодировку, в которой корректно читается русский текст.</p></li>
+<li class="source-line"><span class="number">СТРОКА 6</span><code class="source-code">&lt;meta name=&quot;viewport&quot; content=&quot;width=device-width, initial-scale=1&quot;&gt;</code><p class="explanation">На телефоне страница использует настоящую ширину экрана.</p></li>
+<li class="source-line"><span class="number">СТРОКА 7</span><code class="source-code">&lt;title&gt;{% block title %}Корочки.есть{% endblock %}&lt;/title&gt;</code><p class="explanation">Дочерняя страница может заменить текст вкладки своим заголовком.</p></li>
+<li class="source-line"><span class="number">СТРОКА 8</span><code class="source-code">&lt;link rel=&quot;stylesheet&quot; href=&quot;{% static &#x27;css/style.css&#x27; %}&quot;&gt;</code><p class="explanation">Загружаем общий файл оформления.</p></li>
+<li class="source-line"><span class="number">СТРОКА 9</span><code class="source-code">&lt;script src=&quot;{% static &#x27;js/app.js&#x27; %}&quot; defer&gt;&lt;/script&gt;</code><p class="explanation">defer откладывает выполнение скрипта до готовности HTML.</p></li>
+<li class="source-line"><span class="number">СТРОКА 10</span><code class="source-code">&lt;/head&gt;</code><p class="explanation">Закрываем настройки документа.</p></li>
+<li class="source-line"><span class="number">СТРОКА 11</span><code class="source-code">&lt;body&gt;</code><p class="explanation">Открываем видимую часть страницы.</p></li>
+<li class="source-line"><span class="number">СТРОКА 12</span><code class="source-code">&lt;header&gt;&lt;a class=&quot;brand&quot; href=&quot;{% url &#x27;home&#x27; %}&quot;&gt;&lt;img class=&quot;logo&quot; src=&quot;{% static &#x27;media/logo.jpg&#x27; %}&quot; alt=&quot;Логотип&quot;&gt;Корочки.есть&lt;/a&gt;&lt;nav&gt;</code><p class="explanation">В шапке выводим название и открываем меню.</p></li>
+<li class="source-line"><span class="number">СТРОКА 13</span><code class="source-code">{% if user.is_authenticated %}</code><p class="explanation">Выбираем меню для человека, который уже вошёл.</p></li>
+<li class="source-line"><span class="number">СТРОКА 14</span><code class="source-code">&lt;a href=&quot;{% url &#x27;applications&#x27; %}&quot;&gt;Мои заявки&lt;/a&gt;&lt;a href=&quot;{% url &#x27;new_application&#x27; %}&quot;&gt;Новая заявка&lt;/a&gt;</code><p class="explanation">Две ссылки ведут в личный список и форму записи.</p></li>
+<li class="source-line"><span class="number">СТРОКА 15</span><code class="source-code">{% if user.is_staff %}&lt;a href=&quot;{% url &#x27;dashboard&#x27; %}&quot;&gt;Администратор&lt;/a&gt;{% endif %}</code><p class="explanation">Административная ссылка видна только нужной роли; на сервере тоже есть проверка.</p></li>
+<li class="source-line"><span class="number">СТРОКА 16</span><code class="source-code">&lt;form method=&quot;post&quot; action=&quot;{% url &#x27;logout&#x27; %}&quot;&gt;{% csrf_token %}&lt;button type=&quot;submit&quot;&gt;Выйти&lt;/button&gt;&lt;/form&gt;</code><p class="explanation">Выход отправляет POST с защитным токеном, а не обычную ссылку GET.</p></li>
+<li class="source-line"><span class="number">СТРОКА 17</span><code class="source-code">{% else %}</code><p class="explanation">Открываем альтернативное меню для гостя.</p></li>
+<li class="source-line"><span class="number">СТРОКА 18</span><code class="source-code">&lt;a href=&quot;{% url &#x27;login&#x27; %}&quot;&gt;Вход&lt;/a&gt;&lt;a href=&quot;{% url &#x27;register&#x27; %}&quot;&gt;Регистрация&lt;/a&gt;</code><p class="explanation">Гостю показываем ссылки входа и создания аккаунта.</p></li>
+<li class="source-line"><span class="number">СТРОКА 19</span><code class="source-code">{% endif %}</code><p class="explanation">Завершаем проверку входа.</p></li>
+<li class="source-line"><span class="number">СТРОКА 20</span><code class="source-code">&lt;/nav&gt;&lt;/header&gt;</code><p class="explanation">Закрываем меню и шапку.</p></li>
+<li class="source-line"><span class="number">СТРОКА 21</span><code class="source-code">&lt;main&gt;</code><p class="explanation">Здесь будет основное содержимое конкретной страницы.</p></li>
+<li class="source-line"><span class="number">СТРОКА 22</span><code class="source-code">{% for message in messages %}&lt;p class=&quot;message&quot; role=&quot;status&quot;&gt;{{ message }}&lt;/p&gt;{% endfor %}</code><p class="explanation">Показываем уведомления, сохранённые функциями messages.success или messages.error.</p></li>
+<li class="source-line"><span class="number">СТРОКА 23</span><code class="source-code">{% block content %}{% endblock %}</code><p class="explanation">В это место дочерний шаблон вставит форму или заявки.</p></li>
+<li class="source-line"><span class="number">СТРОКА 24</span><code class="source-code">&lt;/main&gt;</code><p class="explanation">Заканчиваем основной контент.</p></li>
+<li class="source-line"><span class="number">СТРОКА 25</span><code class="source-code">&lt;footer&gt;Корочки.есть — запись на онлайн-курсы&lt;/footer&gt;</code><p class="explanation">Общий подвал присутствует на всех страницах.</p></li>
+<li class="source-line"><span class="number">СТРОКА 26</span><code class="source-code">&lt;/body&gt;</code><p class="explanation">Закрываем видимую часть страницы.</p></li>
+<li class="source-line"><span class="number">СТРОКА 27</span><code class="source-code">&lt;/html&gt;</code><p class="explanation">Завершаем HTML-документ.</p></li>
+</ol></details>
+<details><summary>templates/portal/form.html</summary><ol class="source-lines">
+<li class="source-line"><span class="number">СТРОКА 1</span><code class="source-code">{% extends &quot;base.html&quot; %}</code><p class="explanation">Наследуем шапку, стили и подвал, чтобы не повторять их в каждой форме.</p></li>
+<li class="source-line"><span class="number">СТРОКА 2</span><code class="source-code">{% block title %}{{ title }}{% endblock %}</code><p class="explanation">Значение title из view становится заголовком вкладки.</p></li>
+<li class="source-line"><span class="number">СТРОКА 3</span><code class="source-code">{% block content %}</code><p class="explanation">Начинаем содержимое, которое подставится в base.html.</p></li>
+<li class="source-line"><span class="number">СТРОКА 4</span><code class="source-code">&lt;section class=&quot;card form-card&quot;&gt;&lt;h1&gt;{{ title }}&lt;/h1&gt;</code><p class="explanation">Открываем карточку формы и выводим её заголовок.</p></li>
+<li class="source-line"><span class="number">СТРОКА 5</span><code class="source-code">&lt;form method=&quot;post&quot; class=&quot;saving-form&quot;&gt;</code><p class="explanation">Данные отправятся POST-запросом на текущий адрес; класс нужен индикатору отправки.</p></li>
+<li class="source-line"><span class="number">СТРОКА 6</span><code class="source-code">{% csrf_token %}</code><p class="explanation">Django создаёт скрытое поле защиты от отправки формы с чужого сайта.</p></li>
+<li class="source-line"><span class="number">СТРОКА 7</span><code class="source-code">{{ form.non_field_errors }}</code><p class="explanation">Показываем общую ошибку формы, например неверный логин или пароль.</p></li>
+<li class="source-line"><span class="number">СТРОКА 8</span><code class="source-code">{% for field in form %}</code><p class="explanation">По очереди берём каждое поле, описанное Python-формой.</p></li>
+<li class="source-line"><span class="number">СТРОКА 9</span><code class="source-code">&lt;div class=&quot;field&quot;&gt;&lt;label for=&quot;{{ field.id_for_label }}&quot;&gt;{{ field.label }}&lt;/label&gt;</code><p class="explanation">Подпись связана с id поля: при нажатии на неё курсор попадёт в поле.</p></li>
+<li class="source-line"><span class="number">СТРОКА 10</span><code class="source-code">{{ field }}</code><p class="explanation">Django сам создаст input, select или textarea для этого поля.</p></li>
+<li class="source-line"><span class="number">СТРОКА 11</span><code class="source-code">{% if field.help_text %}&lt;small id=&quot;{{ field.auto_id }}_helptext&quot;&gt;{{ field.help_text|striptags }}&lt;/small&gt;{% endif %}</code><p class="explanation">Если у поля есть подсказка, выводим её обычным текстом.</p></li>
+<li class="source-line"><span class="number">СТРОКА 12</span><code class="source-code">{{ field.errors }}&lt;/div&gt;</code><p class="explanation">Под этим же полем показываем ошибки его заполнения и закрываем блок.</p></li>
+<li class="source-line"><span class="number">СТРОКА 13</span><code class="source-code">{% endfor %}</code><p class="explanation">Заканчиваем перебор полей.</p></li>
+<li class="source-line"><span class="number">СТРОКА 14</span><code class="source-code">&lt;button type=&quot;submit&quot;&gt;{{ button }}&lt;/button&gt;</code><p class="explanation">Кнопка отправляет форму; её надпись передаётся из view.</p></li>
+<li class="source-line"><span class="number">СТРОКА 15</span><code class="source-code">&lt;/form&gt;</code><p class="explanation">Закрываем форму.</p></li>
+<li class="source-line"><span class="number">СТРОКА 16</span><code class="source-code">{% if kind == &quot;login&quot; %}&lt;p&gt;&lt;a href=&quot;{% url &#x27;register&#x27; %}&quot;&gt;Еще не зарегистрированы? Регистрация&lt;/a&gt;&lt;/p&gt;{% endif %}</code><p class="explanation">На странице входа показываем точный текст ссылки из задания.</p></li>
+<li class="source-line"><span class="number">СТРОКА 17</span><code class="source-code">{% if kind == &quot;register&quot; %}&lt;p&gt;&lt;a href=&quot;{% url &#x27;login&#x27; %}&quot;&gt;Вернуться ко входу&lt;/a&gt;&lt;/p&gt;{% endif %}</code><p class="explanation">После открытия регистрации человек может вернуться назад.</p></li>
+<li class="source-line"><span class="number">СТРОКА 18</span><code class="source-code">&lt;/section&gt;</code><p class="explanation">Закрываем карточку формы.</p></li>
+<li class="source-line"><span class="number">СТРОКА 19</span><code class="source-code">{% if kind == &quot;login&quot; %}{% include &quot;portal/slider.html&quot; %}{% endif %}</code><p class="explanation">На странице входа вставляем отдельный общий шаблон слайдера.</p></li>
+<li class="source-line"><span class="number">СТРОКА 20</span><code class="source-code">{% endblock %}</code><p class="explanation">Завершаем содержимое страницы.</p></li>
+</ol></details>
+<details><summary>templates/portal/applications.html</summary><ol class="source-lines">
+<li class="source-line"><span class="number">СТРОКА 1</span><code class="source-code">{% extends &quot;base.html&quot; %}</code><p class="explanation">Берём общий каркас страницы из base.html.</p></li>
+<li class="source-line"><span class="number">СТРОКА 2</span><code class="source-code">{% block title %}Мои заявки{% endblock %}</code><p class="explanation">Задаём название вкладки браузера.</p></li>
+<li class="source-line"><span class="number">СТРОКА 3</span><code class="source-code">{% block content %}</code><p class="explanation">Начинаем содержимое личного кабинета.</p></li>
+<li class="source-line"><span class="number">СТРОКА 4</span><code class="source-code">&lt;h1&gt;Мои заявки&lt;/h1&gt;&lt;p&gt;{{ user.full_name }}&lt;/p&gt;</code><p class="explanation">Показываем заголовок и ФИО вошедшего пользователя.</p></li>
+<li class="source-line"><span class="number">СТРОКА 5</span><code class="source-code">&lt;p&gt;&lt;a href=&quot;{% url &#x27;new_application&#x27; %}&quot;&gt;Создать новую заявку&lt;/a&gt;&lt;/p&gt;</code><p class="explanation">Ссылка ведёт на форму выбора курса.</p></li>
+<li class="source-line"><span class="number">СТРОКА 6</span><code class="source-code">{% for item in items %}</code><p class="explanation">Берём по одной заявке из списка, уже отфильтрованного по владельцу на сервере.</p></li>
+<li class="source-line"><span class="number">СТРОКА 7</span><code class="source-code">&lt;article class=&quot;card&quot;&gt;&lt;h2&gt;№{{ item.pk }} · {{ item.course.title }}&lt;/h2&gt;</code><p class="explanation">У каждой заявки показываем id и название связанного курса.</p></li>
+<li class="source-line"><span class="number">СТРОКА 8</span><code class="source-code">&lt;p&gt;Статус: {{ item.get_status_display }}&lt;/p&gt;</code><p class="explanation">Метод get_status_display превращает код new в русскую подпись «Новая».</p></li>
+<li class="source-line"><span class="number">СТРОКА 9</span><code class="source-code">&lt;p&gt;Дата: {{ item.start_date|date:&quot;d.m.Y&quot; }}&lt;/p&gt;&lt;p&gt;Оплата: {{ item.get_payment_method_display }}&lt;/p&gt;</code><p class="explanation">Выводим календарную дату и понятное название способа оплаты.</p></li>
+<li class="source-line"><span class="number">СТРОКА 10</span><code class="source-code">{% if item.status == &quot;completed&quot; %}</code><p class="explanation">Форма отзыва появляется после завершения; view проверит это правило повторно.</p></li>
+<li class="source-line"><span class="number">СТРОКА 11</span><code class="source-code">&lt;form action=&quot;{% url &#x27;review&#x27; item.pk %}&quot; method=&quot;post&quot; class=&quot;saving-form&quot;&gt;{% csrf_token %}</code><p class="explanation">Адрес содержит id этой заявки; POST защищён CSRF-токеном.</p></li>
+<li class="source-line"><span class="number">СТРОКА 12</span><code class="source-code">&lt;label for=&quot;review-{{ item.pk }}&quot;&gt;Ваш отзыв&lt;/label&gt;</code><p class="explanation">В id используем номер заявки, чтобы подписи разных карточек не путались.</p></li>
+<li class="source-line"><span class="number">СТРОКА 13</span><code class="source-code">&lt;textarea id=&quot;review-{{ item.pk }}&quot; name=&quot;review_text&quot; rows=&quot;3&quot; maxlength=&quot;2000&quot; required&gt;{{ item.review_text }}&lt;/textarea&gt;</code><p class="explanation">Старый отзыв можно отредактировать; автоматическое экранирование не позволит тексту исполниться как HTML.</p></li>
+<li class="source-line"><span class="number">СТРОКА 14</span><code class="source-code">&lt;button type=&quot;submit&quot;&gt;Сохранить отзыв&lt;/button&gt;&lt;/form&gt;</code><p class="explanation">Отправляем текст только в обработчик отзыва и закрываем форму.</p></li>
+<li class="source-line"><span class="number">СТРОКА 15</span><code class="source-code">{% else %}&lt;p&gt;Отзыв станет доступен после завершения обучения.&lt;/p&gt;{% endif %}</code><p class="explanation">Пока учёба не завершена, объясняем отсутствие формы.</p></li>
+<li class="source-line"><span class="number">СТРОКА 16</span><code class="source-code">&lt;/article&gt;</code><p class="explanation">Закрываем карточку конкретной заявки.</p></li>
+<li class="source-line"><span class="number">СТРОКА 17</span><code class="source-code">{% empty %}&lt;p&gt;Заявок пока нет. Создайте первую!&lt;/p&gt;</code><p class="explanation">Ветка empty выполняется, когда в списке нет ни одной записи.</p></li>
+<li class="source-line"><span class="number">СТРОКА 18</span><code class="source-code">{% endfor %}</code><p class="explanation">Заканчиваем перебор заявок.</p></li>
+<li class="source-line"><span class="number">СТРОКА 19</span><code class="source-code">{% endblock %}</code><p class="explanation">Закрываем содержимое кабинета.</p></li>
+</ol></details>
+<details><summary>templates/portal/dashboard.html</summary><ol class="source-lines">
+<li class="source-line"><span class="number">СТРОКА 1</span><code class="source-code">{% extends &quot;base.html&quot; %}</code><p class="explanation">Админка тоже использует общий каркас.</p></li>
+<li class="source-line"><span class="number">СТРОКА 2</span><code class="source-code">{% block title %}Администратор{% endblock %}</code><p class="explanation">Задаём название вкладки.</p></li>
+<li class="source-line"><span class="number">СТРОКА 3</span><code class="source-code">{% block content %}</code><p class="explanation">Начинаем содержание административной страницы.</p></li>
+<li class="source-line"><span class="number">СТРОКА 4</span><code class="source-code">&lt;h1&gt;Все заявки&lt;/h1&gt;</code><p class="explanation">Администратор работает с заявками всех пользователей.</p></li>
+<li class="source-line"><span class="number">СТРОКА 5</span><code class="source-code">&lt;form method=&quot;get&quot; class=&quot;card&quot;&gt;&lt;label for=&quot;filter&quot;&gt;Фильтр по статусу&lt;/label&gt;&lt;select id=&quot;filter&quot; name=&quot;status&quot;&gt;&lt;option value=&quot;&quot;&gt;Все статусы&lt;/option&gt;</code><p class="explanation">GET сохраняет фильтр в адресной строке и не меняет БД.</p></li>
+<li class="source-line"><span class="number">СТРОКА 6</span><code class="source-code">{% for value, label in statuses %}&lt;option value=&quot;{{ value }}&quot; {% if value == selected %}selected{% endif %}&gt;{{ label }}&lt;/option&gt;{% endfor %}</code><p class="explanation">Из каждой пары статуса берём код и подпись, сохраняя выбранный пункт.</p></li>
+<li class="source-line"><span class="number">СТРОКА 7</span><code class="source-code">&lt;/select&gt;&lt;button type=&quot;submit&quot;&gt;Показать&lt;/button&gt;&lt;/form&gt;</code><p class="explanation">Завершаем список и добавляем кнопку применения фильтра.</p></li>
+<li class="source-line"><span class="number">СТРОКА 8</span><code class="source-code">{% for item in page %}</code><p class="explanation">page содержит не больше пяти заявок, подготовленных Paginator.</p></li>
+<li class="source-line"><span class="number">СТРОКА 9</span><code class="source-code">&lt;article class=&quot;card&quot;&gt;&lt;h2&gt;№{{ item.pk }} · {{ item.course.title }}&lt;/h2&gt;</code><p class="explanation">Показываем номер заявки и курс.</p></li>
+<li class="source-line"><span class="number">СТРОКА 10</span><code class="source-code">&lt;p&gt;{{ item.user.full_name }} · {{ item.user.phone }} · {{ item.user.email }}&lt;/p&gt;</code><p class="explanation">Из связанного пользователя получаем его имя и контакты.</p></li>
+<li class="source-line"><span class="number">СТРОКА 11</span><code class="source-code">&lt;p&gt;{{ item.start_date|date:&quot;d.m.Y&quot; }} · {{ item.get_payment_method_display }} · {{ item.get_status_display }}&lt;/p&gt;</code><p class="explanation">Показываем дату, оплату и текущий статус.</p></li>
+<li class="source-line"><span class="number">СТРОКА 12</span><code class="source-code">&lt;p&gt;Отзыв: {{ item.review_text|default:&quot;пока нет&quot; }}&lt;/p&gt;</code><p class="explanation">Если текста ещё нет, выводим понятную замену.</p></li>
+<li class="source-line"><span class="number">СТРОКА 13</span><code class="source-code">&lt;form action=&quot;{% url &#x27;status&#x27; item.pk %}&quot; method=&quot;post&quot; class=&quot;saving-form&quot;&gt;{% csrf_token %}</code><p class="explanation">Изменение статуса у конкретной заявки отправляется POST-запросом.</p></li>
+<li class="source-line"><span class="number">СТРОКА 14</span><code class="source-code">&lt;label for=&quot;status-{{ item.pk }}&quot;&gt;Статус заявки&lt;/label&gt;&lt;select id=&quot;status-{{ item.pk }}&quot; name=&quot;status&quot;&gt;</code><p class="explanation">Создаём отдельный выбор статуса для текущей заявки.</p></li>
+<li class="source-line"><span class="number">СТРОКА 15</span><code class="source-code">{% for value, label in statuses %}&lt;option value=&quot;{{ value }}&quot; {% if value == item.status %}selected{% endif %}&gt;{{ label }}&lt;/option&gt;{% endfor %}</code><p class="explanation">Отмечаем текущий статус выбранным; допустимость нового значения проверит сервер.</p></li>
+<li class="source-line"><span class="number">СТРОКА 16</span><code class="source-code">&lt;/select&gt;&lt;button type=&quot;submit&quot;&gt;Сохранить&lt;/button&gt;&lt;/form&gt;&lt;/article&gt;</code><p class="explanation">Кнопка сохраняет выбранный статус, затем закрываем форму и карточку.</p></li>
+<li class="source-line"><span class="number">СТРОКА 17</span><code class="source-code">{% empty %}&lt;p&gt;Подходящих заявок нет.&lt;/p&gt;{% endfor %}</code><p class="explanation">Если фильтр не нашёл записей, выводим пояснение.</p></li>
+<li class="source-line"><span class="number">СТРОКА 18</span><code class="source-code">&lt;nav class=&quot;pages&quot;&gt;</code><p class="explanation">Начинаем навигацию по страницам списка.</p></li>
+<li class="source-line"><span class="number">СТРОКА 19</span><code class="source-code">{% if page.has_previous %}&lt;a href=&quot;?status={{ selected|urlencode }}&amp;amp;page={{ page.previous_page_number }}&quot;&gt;Назад&lt;/a&gt;{% endif %}</code><p class="explanation">Предыдущая страница сохраняет выбранный фильтр.</p></li>
+<li class="source-line"><span class="number">СТРОКА 20</span><code class="source-code">&lt;span&gt;{{ page.number }} / {{ page.paginator.num_pages }}&lt;/span&gt;</code><p class="explanation">Показываем текущую страницу и общее количество страниц.</p></li>
+<li class="source-line"><span class="number">СТРОКА 21</span><code class="source-code">{% if page.has_next %}&lt;a href=&quot;?status={{ selected|urlencode }}&amp;amp;page={{ page.next_page_number }}&quot;&gt;Далее&lt;/a&gt;{% endif %}</code><p class="explanation">Следующая страница показывается, только если она существует.</p></li>
+<li class="source-line"><span class="number">СТРОКА 22</span><code class="source-code">&lt;/nav&gt;</code><p class="explanation">Закрываем навигацию страниц.</p></li>
+<li class="source-line"><span class="number">СТРОКА 23</span><code class="source-code">{% endblock %}</code><p class="explanation">Завершаем блок содержимого.</p></li>
+</ol></details>
+<details><summary>templates/portal/slider.html</summary><ol class="source-lines">
+<li class="source-line"><span class="number">СТРОКА 1</span><code class="source-code">{% load static %}</code><p class="explanation">Подключаем тег, который строит пути к нашим изображениям.</p></li>
+<li class="source-line"><span class="number">СТРОКА 2</span><code class="source-code">&lt;section class=&quot;slider&quot; aria-label=&quot;Курсы&quot;&gt;</code><p class="explanation">Контейнер ограничивает размер четырёх кадров.</p></li>
+<li class="source-line"><span class="number">СТРОКА 3</span><code class="source-code">&lt;img class=&quot;slide active&quot; src=&quot;{% static &#x27;media/slide-1.jpg&#x27; %}&quot; width=&quot;800&quot; height=&quot;450&quot; alt=&quot;Учебная аудитория&quot;&gt;</code><p class="explanation">Первый кадр имеет класс active и виден сразу.</p></li>
+<li class="source-line"><span class="number">СТРОКА 4</span><code class="source-code">&lt;img class=&quot;slide&quot; src=&quot;{% static &#x27;media/slide-2.jpg&#x27; %}&quot; width=&quot;800&quot; height=&quot;450&quot; alt=&quot;Аудитория для занятий&quot; aria-hidden=&quot;true&quot;&gt;</code><p class="explanation">Второй кадр того же размера сначала скрыт.</p></li>
+<li class="source-line"><span class="number">СТРОКА 5</span><code class="source-code">&lt;img class=&quot;slide&quot; src=&quot;{% static &#x27;media/slide-3.jpg&#x27; %}&quot; width=&quot;800&quot; height=&quot;450&quot; alt=&quot;Компьютерный класс&quot; aria-hidden=&quot;true&quot;&gt;</code><p class="explanation">Третий кадр представляет базы данных.</p></li>
+<li class="source-line"><span class="number">СТРОКА 6</span><code class="source-code">&lt;img class=&quot;slide&quot; src=&quot;{% static &#x27;media/slide-4.jpg&#x27; %}&quot; width=&quot;800&quot; height=&quot;450&quot; alt=&quot;Аудитория дополнительного образования&quot; aria-hidden=&quot;true&quot;&gt;</code><p class="explanation">Четвёртый кадр завершает цикл.</p></li>
+<li class="source-line"><span class="number">СТРОКА 7</span><code class="source-code">&lt;div class=&quot;arrows&quot;&gt;&lt;button type=&quot;button&quot; id=&quot;prev&quot; aria-label=&quot;Предыдущий слайд&quot;&gt;←&lt;/button&gt;&lt;button type=&quot;button&quot; id=&quot;next&quot; aria-label=&quot;Следующий слайд&quot;&gt;→&lt;/button&gt;&lt;/div&gt;</code><p class="explanation">type=button не отправляет форму; кнопки найдём в JS по id.</p></li>
+<li class="source-line"><span class="number">СТРОКА 8</span><code class="source-code">&lt;/section&gt;</code><p class="explanation">Завершаем слайдер.</p></li>
+</ol></details>
+<details><summary>static/css/style.css</summary><ol class="source-lines">
+<li class="source-line"><span class="number">СТРОКА 1</span><code class="source-code">* { box-sizing: border-box; }</code><p class="explanation">В заданную ширину входят padding и рамка, поэтому поля не вылезают за карточку.</p></li>
+<li class="source-line"><span class="number">СТРОКА 2</span><code class="source-code">body { margin: 0; font: 16px/1.5 Arial, sans-serif; color: #203b38; background: #f2f6f3; }</code><p class="explanation">Задаём простой общий шрифт, цвет текста и светлый фон.</p></li>
+<li class="source-line"><span class="number">СТРОКА 3</span><code class="source-code">header, main, footer { width: min(900px, 92%); margin: auto; }</code><p class="explanation">Три основных блока имеют одинаковую ширину и стоят по центру.</p></li>
+<li class="source-line"><span class="number">СТРОКА 4</span><code class="source-code">header { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 15px; padding: 20px 0; }</code><p class="explanation">В шапке название слева, меню справа; при нехватке места есть перенос.</p></li>
+<li class="source-line"><span class="number">СТРОКА 5</span><code class="source-code">nav { display: flex; gap: 15px; align-items: center; flex-wrap: wrap; }</code><p class="explanation">Ссылки меню стоят рядом, а не столбиком.</p></li>
+<li class="source-line"><span class="number">СТРОКА 6</span><code class="source-code">.brand { display: flex; align-items: center; gap: 10px; text-decoration: none; font-weight: bold; }</code><p class="explanation">Название и логотип располагаются рядом.</p></li>
+<li class="source-line"><span class="number">СТРОКА 7</span><code class="source-code">.logo { width: 80px; height: 40px; object-fit: contain; }</code><p class="explanation">Логотип из присланного приложения не растягивается и помещается в шапку.</p></li>
+<li class="source-line"><span class="number">СТРОКА 8</span><code class="source-code">a { color: #096754; }</code><p class="explanation">Общий цвет ссылок — тёмная бирюза.</p></li>
+<li class="source-line"><span class="number">СТРОКА 9</span><code class="source-code">main { min-height: 70vh; padding: 20px 0; }</code><p class="explanation">Основная часть занимает большую часть высоты экрана и имеет вертикальные поля.</p></li>
+<li class="source-line"><span class="number">СТРОКА 10</span><code class="source-code">.card { padding: 24px; margin-bottom: 20px; border: 1px solid #c8d8ce; border-radius: 12px; background: white; animation: appear .3s; }</code><p class="explanation">Одинаковая белая карточка используется для форм и заявок.</p></li>
+<li class="source-line"><span class="number">СТРОКА 11</span><code class="source-code">.form-card { max-width: 480px; margin: 0 auto 24px; }</code><p class="explanation">Обычная форма не растягивается на весь широкий монитор.</p></li>
+<li class="source-line"><span class="number">СТРОКА 12</span><code class="source-code">h1, h2 { margin-top: 0; overflow-wrap: anywhere; }</code><p class="explanation">Убираем лишний верхний отступ и разрешаем перенос длинных названий.</p></li>
+<li class="source-line"><span class="number">СТРОКА 13</span><code class="source-code">p { overflow-wrap: anywhere; }</code><p class="explanation">Длинный email или отзыв не должен расширять страницу.</p></li>
+<li class="source-line"><span class="number">СТРОКА 14</span><code class="source-code">.field { margin-bottom: 16px; }</code><p class="explanation">Между соседними полями оставляем расстояние.</p></li>
+<li class="source-line"><span class="number">СТРОКА 15</span><code class="source-code">label { display: block; margin-bottom: 5px; }</code><p class="explanation">Подпись располагается над полем, а не сбоку.</p></li>
+<li class="source-line"><span class="number">СТРОКА 16</span><code class="source-code">input:not([type=&quot;hidden&quot;]):not([type=&quot;radio&quot;]), select, textarea { width: 100%; padding: 10px; border: 1px solid #9eb7a8; border-radius: 6px; font: inherit; }</code><p class="explanation">Делаем поля одинаковыми, читаемыми и удобными для телефона.</p></li>
+<li class="source-line"><span class="number">СТРОКА 17</span><code class="source-code">textarea { resize: vertical; }</code><p class="explanation">Отзыв можно увеличить по высоте, не разламывая ширину страницы.</p></li>
+<li class="source-line"><span class="number">СТРОКА 18</span><code class="source-code">button { padding: 10px 16px; margin-top: 8px; border: 0; border-radius: 6px; color: white; background: #096754; cursor: pointer; font: inherit; transition: background .2s; }</code><p class="explanation">Общий вид кнопок и плавная смена цвета.</p></li>
+<li class="source-line"><span class="number">СТРОКА 19</span><code class="source-code">button:hover { background: #064b3d; }</code><p class="explanation">При наведении кнопка становится темнее.</p></li>
+<li class="source-line"><span class="number">СТРОКА 20</span><code class="source-code">button:disabled { opacity: .6; cursor: wait; }</code><p class="explanation">Во время отправки формы кнопка показывает ожидание и не нажимается повторно.</p></li>
+<li class="source-line"><span class="number">СТРОКА 21</span><code class="source-code">:focus-visible { outline: 3px solid #c07815; outline-offset: 3px; }</code><p class="explanation">Фокус заметен, когда человек пользуется клавиатурой.</p></li>
+<li class="source-line"><span class="number">СТРОКА 22</span><code class="source-code">.errorlist { padding-left: 20px; color: #a22222; }</code><p class="explanation">Ошибки, которые создал Django, выделяются красным.</p></li>
+<li class="source-line"><span class="number">СТРОКА 23</span><code class="source-code">small { display: block; color: #526a5d; }</code><p class="explanation">Подсказки меньше основного текста и занимают отдельную строку.</p></li>
+<li class="source-line"><span class="number">СТРОКА 24</span><code class="source-code">.message { padding: 12px; background: #dceee2; border-radius: 6px; animation: appear .3s; }</code><p class="explanation">Сообщение после сохранения появляется отдельным заметным блоком.</p></li>
+<li class="source-line"><span class="number">СТРОКА 25</span><code class="source-code">.slider { position: relative; max-width: 600px; aspect-ratio: 16 / 9; margin: 20px auto; overflow: hidden; border-radius: 12px; }</code><p class="explanation">Все кадры занимают один контейнер с одинаковым соотношением сторон.</p></li>
+<li class="source-line"><span class="number">СТРОКА 26</span><code class="source-code">.slide { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: 0; transition: opacity .4s; }</code><p class="explanation">Кадры наложены друг на друга и сначала прозрачны.</p></li>
+<li class="source-line"><span class="number">СТРОКА 27</span><code class="source-code">.slide.active { opacity: 1; }</code><p class="explanation">Только активный кадр становится видимым.</p></li>
+<li class="source-line"><span class="number">СТРОКА 28</span><code class="source-code">.arrows { position: absolute; bottom: 15px; right: 15px; display: flex; gap: 10px; }</code><p class="explanation">Кнопки слайдера стоят поверх изображения снизу справа.</p></li>
+<li class="source-line"><span class="number">СТРОКА 29</span><code class="source-code">.pages { justify-content: center; }</code><p class="explanation">Навигация по страницам админки выравнивается по центру.</p></li>
+<li class="source-line"><span class="number">СТРОКА 30</span><code class="source-code">footer { padding: 20px 0; color: #526a5d; }</code><p class="explanation">Подвал отделён от контента свободным пространством.</p></li>
+<li class="source-line"><span class="number">СТРОКА 31</span><code class="source-code">@keyframes appear { from { opacity: 0; } to { opacity: 1; } }</code><p class="explanation">Описываем простое появление карточек и уведомлений.</p></li>
+<li class="source-line"><span class="number">СТРОКА 32</span><code class="source-code">@media (max-width: 600px) { header { flex-direction: column; align-items: flex-start; } .card { padding: 16px; } h1 { font-size: 26px; } }</code><p class="explanation">На телефоне меню идёт ниже названия, а карточки и заголовки компактнее.</p></li>
+<li class="source-line"><span class="number">СТРОКА 33</span><code class="source-code">@media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }</code><p class="explanation">Отключаем декоративные движения по системной настройке пользователя.</p></li>
+</ol></details>
+<details><summary>static/js/app.js</summary><ol class="source-lines">
+<li class="source-line"><span class="number">СТРОКА 1</span><code class="source-code">const slides = document.querySelectorAll(&quot;.slide&quot;);</code><p class="explanation">Находим все кадры: на странице входа их четыре, на других страницах может быть ноль.</p></li>
+<li class="source-line"><span class="number">СТРОКА 2</span><code class="source-code">let index = 0;</code><p class="explanation">Запоминаем номер текущего кадра; JavaScript считает с нуля.</p></li>
+<li class="source-line"><span class="number">СТРОКА 3</span><code class="source-code">function showSlide(number) {</code><p class="explanation">Эта функция показывает кадр с переданным номером.</p></li>
+<li class="source-line"><span class="number">СТРОКА 4</span><code class="source-code">    index = (number + slides.length) % slides.length;</code><p class="explanation">Остаток от деления замыкает цикл: после четвёртого снова первый, до первого — четвёртый.</p></li>
+<li class="source-line"><span class="number">СТРОКА 5</span><code class="source-code">    slides.forEach((slide, position) =&gt; {</code><p class="explanation">Проверяем по очереди каждый кадр и его номер.</p></li>
+<li class="source-line"><span class="number">СТРОКА 6</span><code class="source-code">        slide.classList.toggle(&quot;active&quot;, position === index);</code><p class="explanation">Добавляем active только выбранному кадру; CSS сделает его видимым.</p></li>
+<li class="source-line"><span class="number">СТРОКА 7</span><code class="source-code">        slide.setAttribute(&quot;aria-hidden&quot;, position !== index);</code><p class="explanation">Неактивные изображения не должны читаться экранным диктором.</p></li>
+<li class="source-line"><span class="number">СТРОКА 8</span><code class="source-code">    });</code><p class="explanation">Заканчиваем перебор кадров.</p></li>
+<li class="source-line"><span class="number">СТРОКА 9</span><code class="source-code">}</code><p class="explanation">Заканчиваем функцию переключения.</p></li>
+<li class="source-line"><span class="number">СТРОКА 10</span><code class="source-code">if (slides.length &gt; 0) {</code><p class="explanation">Не подключаем кнопки слайдера там, где самого слайдера нет.</p></li>
+<li class="source-line"><span class="number">СТРОКА 11</span><code class="source-code">    document.getElementById(&quot;next&quot;).onclick = () =&gt; showSlide(index + 1);</code><p class="explanation">Нажатие правой стрелки показывает следующий кадр.</p></li>
+<li class="source-line"><span class="number">СТРОКА 12</span><code class="source-code">    document.getElementById(&quot;prev&quot;).onclick = () =&gt; showSlide(index - 1);</code><p class="explanation">Нажатие левой стрелки показывает предыдущий кадр.</p></li>
+<li class="source-line"><span class="number">СТРОКА 13</span><code class="source-code">    if (!window.matchMedia(&quot;(prefers-reduced-motion: reduce)&quot;).matches) {</code><p class="explanation">Учитываем желание пользователя отключить автоматические движения.</p></li>
+<li class="source-line"><span class="number">СТРОКА 14</span><code class="source-code">        setInterval(() =&gt; showSlide(index + 1), 3000);</code><p class="explanation">Каждые 3000 миллисекунд, то есть три секунды, выполняем один шаг вперёд.</p></li>
+<li class="source-line"><span class="number">СТРОКА 15</span><code class="source-code">    }</code><p class="explanation">Заканчиваем проверку настройки движения.</p></li>
+<li class="source-line"><span class="number">СТРОКА 16</span><code class="source-code">}</code><p class="explanation">Заканчиваем настройку слайдера.</p></li>
+<li class="source-line"><span class="number">СТРОКА 17</span><code class="source-code">document.querySelectorAll(&quot;.saving-form&quot;).forEach((form) =&gt; {</code><p class="explanation">Находим формы, для которых нужен индикатор отправки.</p></li>
+<li class="source-line"><span class="number">СТРОКА 18</span><code class="source-code">    const button = form.querySelector(&#x27;button[type=&quot;submit&quot;]&#x27;);</code><p class="explanation">Получаем кнопку именно этой формы, а не первую кнопку страницы.</p></li>
+<li class="source-line"><span class="number">СТРОКА 19</span><code class="source-code">    const text = button.textContent;</code><p class="explanation">Запоминаем исходную надпись, чтобы восстановить её после возврата назад.</p></li>
+<li class="source-line"><span class="number">СТРОКА 20</span><code class="source-code">    form.onsubmit = () =&gt; { button.disabled = true; button.textContent = &quot;Сохраняем…&quot;; };</code><p class="explanation">На время отправки показываем ожидание и блокируем повторное нажатие.</p></li>
+<li class="source-line"><span class="number">СТРОКА 21</span><code class="source-code">    window.addEventListener(&quot;pageshow&quot;, () =&gt; { button.disabled = false; button.textContent = text; });</code><p class="explanation">После возврата браузером кнопка снова работает и имеет прежнюю надпись.</p></li>
+<li class="source-line"><span class="number">СТРОКА 22</span><code class="source-code">});</code><p class="explanation">Заканчиваем настройку всех форм.</p></li>
+</ol></details>
+<details><summary>config/settings.py</summary><ol class="source-lines">
+<li class="source-line"><span class="number">СТРОКА 1</span><code class="source-code">from pathlib import Path</code><p class="explanation">Path позволяет собирать пути к файлам без ручных слешей Windows или Linux.</p></li>
+<li class="source-line"><span class="number">СТРОКА 2</span><code class="source-code">from django.core.management.utils import get_random_secret_key</code><p class="explanation">Готовая функция создаёт случайный ключ для подписи служебных данных Django.</p></li>
+<li class="source-line"><span class="number">СТРОКА 3</span><code class="source-code">BASE_DIR = Path(__file__).resolve().parent.parent</code><p class="explanation">Два parent поднимают нас из config/settings.py в корень проекта.</p></li>
+<li class="source-line"><span class="number">СТРОКА 4</span><code class="source-code">key_file = BASE_DIR / &quot;.local_secret&quot;</code><p class="explanation">Ключ хранится локально; этот файл исключён из Git.</p></li>
+<li class="source-line"><span class="number">СТРОКА 5</span><code class="source-code">if not key_file.exists():</code><p class="explanation">При первом запуске файла с ключом ещё нет.</p></li>
+<li class="source-line"><span class="number">СТРОКА 6</span><code class="source-code">    key_file.write_text(get_random_secret_key())</code><p class="explanation">Создаём ключ один раз, а не записываем общий секрет в публичный код.</p></li>
+<li class="source-line"><span class="number">СТРОКА 7</span><code class="source-code">SECRET_KEY = key_file.read_text()</code><p class="explanation">Повторно используем тот же ключ, чтобы вход не сбрасывался при каждом запуске.</p></li>
+<li class="source-line"><span class="number">СТРОКА 8</span><code class="source-code">DEBUG = True</code><p class="explanation">В учебном проекте включены подробные сообщения об ошибках.</p></li>
+<li class="source-line"><span class="number">СТРОКА 9</span><code class="source-code">ALLOWED_HOSTS = [&quot;127.0.0.1&quot;, &quot;localhost&quot;, &quot;testserver&quot;]</code><p class="explanation">Разрешаем локальный браузер и тестовый клиент Django.</p></li>
+<li class="source-line"><span class="number">СТРОКА 10</span><code class="source-code">INSTALLED_APPS = [</code><p class="explanation">Перечисляем приложения, которые должны работать в проекте.</p></li>
+<li class="source-line"><span class="number">СТРОКА 11</span><code class="source-code">    &quot;django.contrib.auth&quot;,</code><p class="explanation">Готовые пользователи, роли и проверка паролей.</p></li>
+<li class="source-line"><span class="number">СТРОКА 12</span><code class="source-code">    &quot;django.contrib.contenttypes&quot;,</code><p class="explanation">Служебная таблица типов моделей для системы прав.</p></li>
+<li class="source-line"><span class="number">СТРОКА 13</span><code class="source-code">    &quot;django.contrib.sessions&quot;,</code><p class="explanation">Хранение состояния «пользователь вошёл».</p></li>
+<li class="source-line"><span class="number">СТРОКА 14</span><code class="source-code">    &quot;django.contrib.messages&quot;,</code><p class="explanation">Уведомления после отправки форм.</p></li>
+<li class="source-line"><span class="number">СТРОКА 15</span><code class="source-code">    &quot;django.contrib.staticfiles&quot;,</code><p class="explanation">Подключение CSS, JavaScript и изображений.</p></li>
+<li class="source-line"><span class="number">СТРОКА 16</span><code class="source-code">    &quot;portal&quot;,</code><p class="explanation">Наши модели, формы и страницы.</p></li>
+<li class="source-line"><span class="number">СТРОКА 17</span><code class="source-code">]</code><p class="explanation">Закрываем список приложений.</p></li>
+<li class="source-line"><span class="number">СТРОКА 18</span><code class="source-code">MIDDLEWARE = [</code><p class="explanation">Эти обработчики выполняются до view и после него.</p></li>
+<li class="source-line"><span class="number">СТРОКА 19</span><code class="source-code">    &quot;django.middleware.security.SecurityMiddleware&quot;,</code><p class="explanation">Добавляет базовые защитные заголовки.</p></li>
+<li class="source-line"><span class="number">СТРОКА 20</span><code class="source-code">    &quot;django.contrib.sessions.middleware.SessionMiddleware&quot;,</code><p class="explanation">Загружает сессию пользователя.</p></li>
+<li class="source-line"><span class="number">СТРОКА 21</span><code class="source-code">    &quot;django.middleware.common.CommonMiddleware&quot;,</code><p class="explanation">Обрабатывает общие правила HTTP и адресов.</p></li>
+<li class="source-line"><span class="number">СТРОКА 22</span><code class="source-code">    &quot;django.middleware.csrf.CsrfViewMiddleware&quot;,</code><p class="explanation">Проверяет защитный токен POST-форм.</p></li>
+<li class="source-line"><span class="number">СТРОКА 23</span><code class="source-code">    &quot;django.contrib.auth.middleware.AuthenticationMiddleware&quot;,</code><p class="explanation">По сессии создаёт request.user.</p></li>
+<li class="source-line"><span class="number">СТРОКА 24</span><code class="source-code">    &quot;django.contrib.messages.middleware.MessageMiddleware&quot;,</code><p class="explanation">Даёт доступ к уведомлениям messages.</p></li>
+<li class="source-line"><span class="number">СТРОКА 25</span><code class="source-code">]</code><p class="explanation">Сессия должна загружаться раньше, чем определяется пользователь.</p></li>
+<li class="source-line"><span class="number">СТРОКА 26</span><code class="source-code">ROOT_URLCONF = &quot;config.urls&quot;</code><p class="explanation">С этого файла Django начинает поиск нужного URL.</p></li>
+<li class="source-line"><span class="number">СТРОКА 27</span><code class="source-code">TEMPLATES = [{</code><p class="explanation">Настраиваем один движок HTML-шаблонов.</p></li>
+<li class="source-line"><span class="number">СТРОКА 28</span><code class="source-code">    &quot;BACKEND&quot;: &quot;django.template.backends.django.DjangoTemplates&quot;,</code><p class="explanation">Используем обычный шаблонизатор Django.</p></li>
+<li class="source-line"><span class="number">СТРОКА 29</span><code class="source-code">    &quot;DIRS&quot;: [BASE_DIR / &quot;templates&quot;],</code><p class="explanation">Наши HTML-файлы находятся в папке templates.</p></li>
+<li class="source-line"><span class="number">СТРОКА 30</span><code class="source-code">    &quot;APP_DIRS&quot;: True,</code><p class="explanation">Django также может искать шаблоны внутри приложений.</p></li>
+<li class="source-line"><span class="number">СТРОКА 31</span><code class="source-code">    &quot;OPTIONS&quot;: {&quot;context_processors&quot;: [</code><p class="explanation">Эти помощники добавляют общие переменные HTML-шаблонам.</p></li>
+<li class="source-line"><span class="number">СТРОКА 32</span><code class="source-code">        &quot;django.template.context_processors.request&quot;,</code><p class="explanation">Передаёт текущий request.</p></li>
+<li class="source-line"><span class="number">СТРОКА 33</span><code class="source-code">        &quot;django.contrib.auth.context_processors.auth&quot;,</code><p class="explanation">Передаёт пользователя user.</p></li>
+<li class="source-line"><span class="number">СТРОКА 34</span><code class="source-code">        &quot;django.contrib.messages.context_processors.messages&quot;,</code><p class="explanation">Передаёт уведомления messages.</p></li>
+<li class="source-line"><span class="number">СТРОКА 35</span><code class="source-code">    ]},</code><p class="explanation">Завершаем список помощников и настройки движка.</p></li>
+<li class="source-line"><span class="number">СТРОКА 36</span><code class="source-code">}]</code><p class="explanation">Завершаем настройки шаблонов.</p></li>
+<li class="source-line"><span class="number">СТРОКА 37</span><code class="source-code">DATABASES = {&quot;default&quot;: {&quot;ENGINE&quot;: &quot;django.db.backends.sqlite3&quot;, &quot;NAME&quot;: BASE_DIR / &quot;db.sqlite3&quot;}}</code><p class="explanation">Одна SQLite-база хранится в файле db.sqlite3.</p></li>
+<li class="source-line"><span class="number">СТРОКА 38</span><code class="source-code">AUTH_USER_MODEL = &quot;portal.User&quot;</code><p class="explanation">Выбираем нашу модель пользователя; это нужно задать до первого migrate.</p></li>
+<li class="source-line"><span class="number">СТРОКА 39</span><code class="source-code">AUTH_PASSWORD_VALIDATORS = [{&quot;NAME&quot;: &quot;django.contrib.auth.password_validation.MinimumLengthValidator&quot;, &quot;OPTIONS&quot;: {&quot;min_length&quot;: 8}}]</code><p class="explanation">Готовая проверка требует пароль не короче восьми символов.</p></li>
+<li class="source-line"><span class="number">СТРОКА 40</span><code class="source-code">LANGUAGE_CODE = &quot;ru-ru&quot;</code><p class="explanation">Готовые подписи и ошибки Django будут на русском языке.</p></li>
+<li class="source-line"><span class="number">СТРОКА 41</span><code class="source-code">TIME_ZONE = &quot;Asia/Yekaterinburg&quot;</code><p class="explanation">Указываем часовой пояс проекта.</p></li>
+<li class="source-line"><span class="number">СТРОКА 42</span><code class="source-code">USE_I18N = True</code><p class="explanation">Разрешаем встроенные переводы Django.</p></li>
+<li class="source-line"><span class="number">СТРОКА 43</span><code class="source-code">USE_TZ = True</code><p class="explanation">Включаем поддержку часовых поясов при работе с датой и временем.</p></li>
+<li class="source-line"><span class="number">СТРОКА 44</span><code class="source-code">STATIC_URL = &quot;static/&quot;</code><p class="explanation">URL-префикс для стилей, скриптов и картинок.</p></li>
+<li class="source-line"><span class="number">СТРОКА 45</span><code class="source-code">STATICFILES_DIRS = [BASE_DIR / &quot;static&quot;]</code><p class="explanation">Папка, где лежат наши статические файлы.</p></li>
+<li class="source-line"><span class="number">СТРОКА 46</span><code class="source-code">DEFAULT_AUTO_FIELD = &quot;django.db.models.BigAutoField&quot;</code><p class="explanation">Поле id по умолчанию — автоматически растущее целое число.</p></li>
+<li class="source-line"><span class="number">СТРОКА 47</span><code class="source-code">LOGIN_URL = &quot;login&quot;</code><p class="explanation">login_required направляет гостя на маршрут с этим именем.</p></li>
+</ol></details>
+<details><summary>config/urls.py</summary><ol class="source-lines">
+<li class="source-line"><span class="number">СТРОКА 1</span><code class="source-code">from django.urls import include, path</code><p class="explanation">path объявляет маршрут; include подключает маршруты приложения.</p></li>
+<li class="source-line"><span class="number">СТРОКА 2</span><code class="source-code">urlpatterns = [path(&quot;&quot;, include(&quot;portal.urls&quot;))]</code><p class="explanation">Все адреса от корня передаём приложению portal.</p></li>
+</ol></details>
+<details><summary>manage.py</summary><ol class="source-lines">
+<li class="source-line"><span class="number">СТРОКА 1</span><code class="source-code">import os</code><p class="explanation">os позволяет задать переменную окружения, из которой Django узнает файл настроек.</p></li>
+<li class="source-line"><span class="number">СТРОКА 2</span><code class="source-code">import sys</code><p class="explanation">sys.argv содержит команду из терминала: например, migrate или runserver.</p></li>
+<li class="source-line"><span class="number">СТРОКА 3</span><code class="source-code">if __name__ == &quot;__main__&quot;:</code><p class="explanation">Запускаем команды только при прямом запуске файла, а не при его импорте.</p></li>
+<li class="source-line"><span class="number">СТРОКА 4</span><code class="source-code">    os.environ.setdefault(&quot;DJANGO_SETTINGS_MODULE&quot;, &quot;config.settings&quot;)</code><p class="explanation">Указываем модуль config/settings.py; существующую настройку не перезаписываем.</p></li>
+<li class="source-line"><span class="number">СТРОКА 5</span><code class="source-code">    from django.core.management import execute_from_command_line</code><p class="explanation">Импортируем диспетчер команд Django после выбора настроек.</p></li>
+<li class="source-line"><span class="number">СТРОКА 6</span><code class="source-code">    execute_from_command_line(sys.argv)</code><p class="explanation">Передаём Django все аргументы терминала; дальше он сам выбирает нужную команду.</p></li>
+</ol></details>
+<details><summary>portal/management/commands/seed.py</summary><ol class="source-lines">
+<li class="source-line"><span class="number">СТРОКА 1</span><code class="source-code">from getpass import getpass</code><p class="explanation">Позволяет ввести пароль в терминале без отображения символов.</p></li>
+<li class="source-line"><span class="number">СТРОКА 2</span><code class="source-code">from django.core.management.base import BaseCommand, CommandError</code><p class="explanation">Основа своей команды и понятная ошибка для терминала.</p></li>
+<li class="source-line"><span class="number">СТРОКА 3</span><code class="source-code">from portal.models import Course, User</code><p class="explanation">Подключаем таблицы курсов и пользователей.</p></li>
+<li class="source-line"><span class="number">СТРОКА 4</span><code class="source-code">class Command(BaseCommand):</code><p class="explanation">Django ищет в файле seed.py класс с именем Command.</p></li>
+<li class="source-line"><span class="number">СТРОКА 5</span><code class="source-code">    help = &quot;Создать три курса и администратора.&quot;</code><p class="explanation">Описание появится в справке manage.py help seed.</p></li>
+<li class="source-line"><span class="number">СТРОКА 6</span><code class="source-code">    def handle(self, *args, **options):</code><p class="explanation">Этот метод выполнится после команды python manage.py seed.</p></li>
+<li class="source-line"><span class="number">СТРОКА 7</span><code class="source-code">        titles = [&quot;Основы алгоритмизации и программирования&quot;, &quot;Основы веб-дизайна&quot;, &quot;Основы проектирования баз данных&quot;]</code><p class="explanation">Названия трёх курсов из задания.</p></li>
+<li class="source-line"><span class="number">СТРОКА 8</span><code class="source-code">        for title in titles:</code><p class="explanation">По очереди берём каждое название.</p></li>
+<li class="source-line"><span class="number">СТРОКА 9</span><code class="source-code">            Course.objects.get_or_create(title=title)</code><p class="explanation">Создаём курс только если его ещё нет; повторный запуск не дублирует записи.</p></li>
+<li class="source-line"><span class="number">СТРОКА 10</span><code class="source-code">        if not User.objects.filter(username=&quot;Admin&quot;).exists():</code><p class="explanation">Существующему администратору не меняем пароль повторным запуском.</p></li>
+<li class="source-line"><span class="number">СТРОКА 11</span><code class="source-code">            password = getpass(&quot;Введите пароль администратора из задания: &quot;)</code><p class="explanation">Пароль вводится локально, а не публикуется в GitHub.</p></li>
+<li class="source-line"><span class="number">СТРОКА 12</span><code class="source-code">            if len(password) &lt; 8:</code><p class="explanation">Проверяем минимальную длину до создания пользователя.</p></li>
+<li class="source-line"><span class="number">СТРОКА 13</span><code class="source-code">                raise CommandError(&quot;Нужно не менее 8 символов.&quot;)</code><p class="explanation">Останавливаем команду с объяснением ошибки.</p></li>
+<li class="source-line"><span class="number">СТРОКА 14</span><code class="source-code">            User.objects.create_user(username=&quot;Admin&quot;, password=password, is_staff=True, full_name=&quot;Администратор&quot;, phone=&quot;8(900)000-00-00&quot;, email=&quot;admin@example.ru&quot;)</code><p class="explanation">create_user хеширует пароль; is_staff назначает административную роль.</p></li>
+<li class="source-line"><span class="number">СТРОКА 15</span><code class="source-code">        self.stdout.write(&quot;Курсы и администратор готовы.&quot;)</code><p class="explanation">Сообщаем, что начальные данные подготовлены.</p></li>
+</ol></details>
+<p class="note">Миграции генерируются Django и сохранены в проекте как история. Тесты — дополнительная проверка. Начни с перечисленных выше файлов и упражнений.</p></section></main></body></html>

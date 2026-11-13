@@ -1,24 +1,23 @@
-{% extends "base.html" %} {# Наследуем общий интерфейс портала. #}
-{% block title %}Панель администратора{% endblock %} {# Название административной вкладки. #}
-{% block content %} {# Открываем содержимое панели. #}
-<div class="page-heading"><div><p class="eyebrow">УПРАВЛЕНИЕ ОБУЧЕНИЕМ</p><h1>Все заявки</h1><p>Новая → Идет обучение → Обучение завершено</p></div></div> {# Напоминаем администратору допустимый порядок статусов. #}
-<form method="get" class="filter card"><label for="status-filter">Статус</label><select id="status-filter" name="status"><option value="">Все статусы</option> {# GET-фильтр можно сохранить в закладку; он не меняет БД. #}
-{% for value, label in statuses %}<option value="{{ value }}" {% if value == selected %}selected{% endif %}>{{ label }}</option>{% endfor %} {# Заполняем варианты из модели и сохраняем выбранное значение после фильтрации. #}
-</select><button class="button secondary" type="submit">Показать</button></form> {# Кнопка применяет выбранный фильтр. #}
-<div class="admin-list"> {# Открываем список карточек всех пользователей. #}
-{% for item, form in rows %} {# Каждой заявке соответствует отдельная форма смены статуса. #}
-<article class="card admin-card"><div><span class="badge {{ item.status }}">{{ item.get_status_display }}</span><h2>№{{ item.pk }} · {{ item.course.title }}</h2> {# Показываем идентификатор, курс и текущий статус. #}
-<p>{{ item.user.full_name }} · {{ item.user.username }}</p><p>{{ item.user.phone }} · {{ item.user.email }}</p><p>Начало: {{ item.start_date|date:"d.m.Y" }} · {{ item.get_payment_method_display }}</p> {# Контактные данные видит только администратор после проверки роли на сервере. #}
-{% if item.review_text %}<p class="review-text">Отзыв: {{ item.review_text }}</p>{% endif %}</div> {# Показываем уже оставленный отзыв с автоматическим экранированием HTML. #}
-<form action="{% url 'status' item.pk %}" method="post" data-loading>{% csrf_token %} {# Смена статуса — защищённый POST на обработчик конкретной заявки. #}
-<label for="status-{{ item.pk }}">Новый статус</label><select name="status" id="status-{{ item.pk }}"> {# Уникальный id связывает подпись именно с этой формой. #}
-{% for value, label in statuses %}<option value="{{ value }}" {% if value == item.status %}selected{% endif %}>{{ label }}</option>{% endfor %} {# Выводим текущий статус выбранным; сервер проверит допустимость перехода. #}
-</select><button class="button primary" type="submit">Сохранить статус</button><p class="loading-message" role="status" hidden>Сохраняем статус…</p></form></article> {# Индикатор работает во время отправки; результат появится как сообщение после перенаправления. #}
-{% empty %}<p class="card empty">По этому фильтру заявок нет.</p>{% endfor %} {# При пустом результате объясняем отсутствие карточек. #}
-</div> {# Закрываем список заявок. #}
-<nav class="pagination" aria-label="Страницы заявок"> {# Отдельная навигация отвечает только за страницы списка. #}
-{% if page.has_previous %}<a class="button secondary" href="?status={{ selected|urlencode }}&amp;page={{ page.previous_page_number }}">Назад</a>{% endif %} {# Ссылка на предыдущую страницу сохраняет текущий фильтр. #}
-<span>Страница {{ page.number }} из {{ page.paginator.num_pages }}</span> {# Показываем текущую страницу и общее количество страниц. #}
-{% if page.has_next %}<a class="button secondary" href="?status={{ selected|urlencode }}&amp;page={{ page.next_page_number }}">Далее</a>{% endif %} {# Ссылка вперёд выводится только если следующая страница существует. #}
-</nav> {# Завершаем пагинацию. #}
-{% endblock %} {# Закрываем содержимое панели. #}
+{% extends "base.html" %} {# Админка тоже использует общий каркас. #}
+{% block title %}Администратор{% endblock %} {# Задаём название вкладки. #}
+{% block content %} {# Начинаем содержание административной страницы. #}
+<h1>Все заявки</h1> {# Администратор работает с заявками всех пользователей. #}
+<form method="get" class="card"><label for="filter">Фильтр по статусу</label><select id="filter" name="status"><option value="">Все статусы</option> {# GET сохраняет фильтр в адресной строке и не меняет БД. #}
+{% for value, label in statuses %}<option value="{{ value }}" {% if value == selected %}selected{% endif %}>{{ label }}</option>{% endfor %} {# Из каждой пары статуса берём код и подпись, сохраняя выбранный пункт. #}
+</select><button type="submit">Показать</button></form> {# Завершаем список и добавляем кнопку применения фильтра. #}
+{% for item in page %} {# page содержит не больше пяти заявок, подготовленных Paginator. #}
+<article class="card"><h2>№{{ item.pk }} · {{ item.course.title }}</h2> {# Показываем номер заявки и курс. #}
+<p>{{ item.user.full_name }} · {{ item.user.phone }} · {{ item.user.email }}</p> {# Из связанного пользователя получаем его имя и контакты. #}
+<p>{{ item.start_date|date:"d.m.Y" }} · {{ item.get_payment_method_display }} · {{ item.get_status_display }}</p> {# Показываем дату, оплату и текущий статус. #}
+<p>Отзыв: {{ item.review_text|default:"пока нет" }}</p> {# Если текста ещё нет, выводим понятную замену. #}
+<form action="{% url 'status' item.pk %}" method="post" class="saving-form">{% csrf_token %} {# Изменение статуса у конкретной заявки отправляется POST-запросом. #}
+<label for="status-{{ item.pk }}">Статус заявки</label><select id="status-{{ item.pk }}" name="status"> {# Создаём отдельный выбор статуса для текущей заявки. #}
+{% for value, label in statuses %}<option value="{{ value }}" {% if value == item.status %}selected{% endif %}>{{ label }}</option>{% endfor %} {# Отмечаем текущий статус выбранным; допустимость нового значения проверит сервер. #}
+</select><button type="submit">Сохранить</button></form></article> {# Кнопка сохраняет выбранный статус, затем закрываем форму и карточку. #}
+{% empty %}<p>Подходящих заявок нет.</p>{% endfor %} {# Если фильтр не нашёл записей, выводим пояснение. #}
+<nav class="pages"> {# Начинаем навигацию по страницам списка. #}
+{% if page.has_previous %}<a href="?status={{ selected|urlencode }}&amp;page={{ page.previous_page_number }}">Назад</a>{% endif %} {# Предыдущая страница сохраняет выбранный фильтр. #}
+<span>{{ page.number }} / {{ page.paginator.num_pages }}</span> {# Показываем текущую страницу и общее количество страниц. #}
+{% if page.has_next %}<a href="?status={{ selected|urlencode }}&amp;page={{ page.next_page_number }}">Далее</a>{% endif %} {# Следующая страница показывается, только если она существует. #}
+</nav> {# Закрываем навигацию страниц. #}
+{% endblock %} {# Завершаем блок содержимого. #}

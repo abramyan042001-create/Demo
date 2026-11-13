@@ -1,92 +1,89 @@
-from django.contrib import messages  # Одноразовые сообщения показывают результат действия после перенаправления.
-from django.contrib.auth import login, logout  # Стандартные функции создают и удаляют безопасную сессию.
-from django.contrib.auth.decorators import login_required  # Декоратор не допускает гостя к личным страницам.
-from django.core.exceptions import PermissionDenied  # Исключение превращается в HTTP 403 «нет доступа».
-from django.core.paginator import Paginator  # Разбивает длинный список на страницы по заданному размеру.
-from django.db import IntegrityError, transaction  # Транзакция и обработка конфликта защищают запись при одновременных запросах.
-from django.shortcuts import get_object_or_404, redirect, render  # Получение объекта с 404, перенаправление и рендер HTML.
-from django.views.decorators.http import require_POST  # Изменяющие данные обработчики должны принимать только POST.
-from .forms import ApplicationForm, LoginForm, RegistrationForm, ReviewForm, StatusForm  # Импортируем наши формы с едиными серверными правилами.
-from .models import Application  # Через ORM модели читаем и изменяем заявки, не склеивая SQL вручную.
-def register_view(request):  # Функция получает HTTP-запрос и возвращает страницу регистрации или перенаправление.
-    form = RegistrationForm(request.POST if request.method == "POST" else None)  # GET создаёт пустую форму; POST связывает её с отправленными полями.
-    if request.method == "POST" and form.is_valid():  # Не сохраняем пользователя, пока все поля и оба пароля не проверены.
-        try:  # Даже после is_valid конкурентный запрос может успеть занять такой же логин.
-            with transaction.atomic():  # При конфликте откатываем только эту операцию создания пользователя.
-                form.save()  # UserCreationForm использует set_password: в БД попадёт хеш, а не исходный пароль.
-        except IntegrityError:  # Уникальное ограничение БД служит последним рубежом защиты от повторяющегося логина.
-            form.add_error("username", "Этот логин уже занят. Выберите другой.")  # Вместо ошибки 500 оставляем заполненную форму с понятным сообщением.
-        else:  # Этот блок выполняется только если создание пользователя прошло без исключения.
-            messages.success(request, "Регистрация завершена. Теперь войдите.")  # Сохраняем уведомление на следующую страницу.
-            return redirect("login")  # POST/Redirect/GET исключает повторную регистрацию при обновлении страницы.
-    return render(request, "portal/form.html", {"form": form, "title": "Регистрация", "button": "Зарегистрироваться", "kind": "register"})  # Передаём шаблону форму, подписи и вид страницы.
-def login_view(request):  # Вход использует одну страницу для обычного пользователя и администратора.
-    form = LoginForm(request=request, data=request.POST if request.method == "POST" else None)  # AuthenticationForm проверяет пароль и активность учётной записи.
-    if request.method == "POST" and form.is_valid():  # Только успешная проверка даёт право создать сессию.
-        login(request, form.get_user())  # Django меняет идентификатор сессии и запоминает id пользователя.
-        return redirect("dashboard" if request.user.is_staff else "applications")  # Роль из БД определяет стартовую страницу; пользовательский next не используется.
-    return render(request, "portal/form.html", {"form": form, "title": "Вход в аккаунт", "button": "Войти", "kind": "login"})  # Неверные данные останутся в форме с общим сообщением об ошибке.
-@login_required  # До вызова следующей функции проверяем наличие авторизованного пользователя.
-@require_POST  # Выход изменяет сессию, поэтому ссылка GET не должна выходить из аккаунта.
-def logout_view(request):  # Обработчик выхода получает защищённый CSRF-токеном POST.
-    logout(request)  # Удаляем данные текущей сессии, чтобы старый идентификатор больше не давал доступ.
-    return redirect("login")  # После выхода возвращаемся к форме авторизации.
-@login_required  # Гость не может просматривать личный список заявок.
-def applications_view(request):  # Обработчик кабинета пользователя.
-    items = Application.objects.filter(user=request.user).select_related("course")  # Фильтр владельца стоит в SQL; select_related получает курс тем же запросом.
-    return render(request, "portal/applications.html", {"items": items, "review_form": ReviewForm()})  # Передаём только собственные заявки и пустую форму отзыва.
-@login_required  # Для создания заявки необходимо войти в аккаунт.
-def new_application_view(request):  # Обработчик формы записи на курс.
-    form = ApplicationForm(request.POST if request.method == "POST" else None)  # Различаем показ пустой формы и проверку отправленных данных.
-    if request.method == "POST" and form.is_valid():  # Проверяются курс, дата и разрешённый способ оплаты.
-        item = form.save(commit=False)  # Создаём объект в памяти, пока без INSERT: ему ещё нужен владелец.
-        item.user = request.user  # Владельца берём из сессии; чужой user_id в POST игнорируется.
-        item.status = Application.Status.NEW  # Нельзя самостоятельно записаться сразу с завершённым обучением.
-        item.save()  # После заполнения обязательных полей выполняем INSERT в БД.
-        messages.success(request, "Заявка создана.")  # Сообщаем пользователю, что данные сохранены.
-        return redirect("applications")  # Перенаправляем на список; обновление браузера не создаст вторую заявку.
-    return render(request, "portal/form.html", {"form": form, "title": "Новая заявка", "button": "Отправить заявку", "kind": "application"})  # При ошибке показываем ту же форму с введёнными данными.
-@login_required  # Только вошедший пользователь может отправить отзыв.
-@require_POST  # Отзыв записывается только POST-запросом с CSRF-токеном.
-def review_view(request, pk):  # pk — целочисленный id заявки из URL.
-    with transaction.atomic():  # Проверка статуса и запись отзыва составляют одну операцию.
-        item = get_object_or_404(Application.objects.filter(user=request.user), pk=pk)  # Ищем сразу среди собственных заявок; чужой id даёт 404.
-        if item.status != Application.Status.COMPLETED:  # Проверяем статус на сервере даже если кто-то вручную отправил скрытую форму.
-            raise PermissionDenied("Отзыв доступен после завершения обучения.")  # Возвращаем 403 и ничего не сохраняем.
-        form = ReviewForm(request.POST, instance=item)  # Связываем форму с существующей заявкой, чтобы выполнить UPDATE, а не INSERT.
-        if form.is_valid():  # Проверяем обязательность и длину текста, а также ограничения модели.
-            form.save()  # Сохраняем только проверенное поле review_text.
-            messages.success(request, "Отзыв сохранён.")  # Готовим уведомление для личного кабинета.
-            return redirect("applications")  # Завершаем успешный POST перенаправлением.
-    return render(request, "portal/form.html", {"form": form, "title": "Отзыв об обучении", "button": "Сохранить отзыв", "kind": "review"}, status=400)  # Ошибки текста показываем рядом с формой, не теряя введённое.
-@login_required  # Сначала проверяем сам факт входа в аккаунт.
-def dashboard_view(request):  # Собственная административная панель: это не стандартная django-admin.
-    if not request.user.is_staff:  # Роль проверяется по данным БД, а не по скрытой кнопке в HTML.
-        raise PermissionDenied("Раздел доступен администратору.")  # Обычный пользователь получит HTTP 403.
-    status = request.GET.get("status", "")  # Фильтр передаётся в строке URL, например ?status=new.
-    items = Application.objects.select_related("user", "course")  # Одним запросом загружаем заявку, владельца и название курса.
-    if status in Application.Status.values:  # В запрос допускаем только известные коды статуса.
-        items = items.filter(status=status)  # ORM подставляет параметр безопасно, без SQL-инъекции.
-    else:  # Пустой или неизвестный фильтр не должен ломать панель.
-        status = ""  # Сбрасываем его к режиму «Все статусы».
-    page = Paginator(items, 5).get_page(request.GET.get("page"))  # Показываем по пять записей; неверный номер страницы обрабатывается без ошибки 500.
-    rows = [(item, StatusForm(instance=item)) for item in page]  # Каждой записи даём форму с выбранным текущим статусом.
-    return render(request, "portal/dashboard.html", {"rows": rows, "page": page, "statuses": Application.Status.choices, "selected": status})  # Шаблон получает данные, формы и состояние фильтра.
-@login_required  # Смена статуса требует авторизованного пользователя.
-@require_POST  # Не допускаем изменение БД простым открытием URL.
-def status_view(request, pk):  # pk указывает конкретную изменяемую заявку.
-    if not request.user.is_staff:  # Повторяем проверку роли в самом обработчике записи, независимо от доступности панели.
-        raise PermissionDenied("Менять статус может только администратор.")  # Возвращаем 403 при поддельном запросе обычного пользователя.
-    with transaction.atomic():  # Объединяем чтение и сохранение статуса в транзакцию.
-        item = get_object_or_404(Application, pk=pk)  # Если такой заявки нет, возвращаем 404 вместо падения приложения.
-        old_status = item.status  # Запоминаем состояние БД до того, как форма изменит объект в памяти.
-        form = StatusForm(request.POST, instance=item)  # Разрешаем редактировать только status и проверяем направление перехода.
-        if form.is_valid():  # Код статуса и переход должны пройти все серверные проверки.
-            updated = Application.objects.filter(pk=pk, status=old_status).update(status=form.cleaned_data["status"])  # Условный UPDATE не перезапишет статус, уже изменённый другим администратором.
-            if updated:  # Значение 1 означает, что ровно одна строка успешно обновлена.
-                messages.success(request, "Статус обновлён.")  # На следующей странице появится уведомление об успехе.
-            else:  # Ноль строк означает, что параллельный запрос уже поменял исходное состояние.
-                messages.error(request, "Заявка уже изменена. Обновите страницу.")  # Предлагаем перечитать актуальную запись, не затирая изменения.
-        else:  # Неверный переход должен дать объяснение, а не молчаливый отказ.
-            messages.error(request, " ".join(error for errors in form.errors.values() for error in errors))  # Собираем проверенные сообщения формы в одно уведомление.
-    return redirect("dashboard")  # После любой попытки возвращаемся к актуальному списку заявок.
+from django.contrib import messages  # Сообщения объясняют результат действия после перехода на другую страницу.
+from django.contrib.auth import login, logout  # Готовые функции создают и завершают сессию пользователя.
+from django.contrib.auth.decorators import login_required  # Этот декоратор не пускает гостя на личные страницы.
+from django.contrib.auth.forms import AuthenticationForm  # Готовая форма проверяет существующего пользователя и пароль.
+from django.core.exceptions import PermissionDenied  # Это исключение возвращает HTTP 403: действие запрещено.
+from django.core.paginator import Paginator  # Paginator разбивает длинный список на несколько страниц.
+from django.shortcuts import get_object_or_404, redirect, render  # Эти помощники получают запись, перенаправляют и показывают HTML.
+from django.views.decorators.http import require_POST  # Запрещаем изменять данные простым открытием ссылки через GET.
+from .forms import ApplicationForm, RegisterForm, ReviewForm, StatusForm  # Подключаем формы нашего приложения.
+from .models import Application, STATUSES  # Подключаем таблицу заявок и варианты статусов.
+
+def register_view(request):  # Django вызывает функцию, когда открыт адрес регистрации.
+    form = RegisterForm(request.POST if request.method == "POST" else None)  # При POST связываем форму с отправленными полями; при GET показываем пустую.
+    if request.method == "POST" and form.is_valid():  # Проверяем, что форму отправили и все поля прошли серверную проверку.
+        form.save()  # Родительский UserCreationForm сохраняет пользователя с хешем пароля.
+        return redirect("login")  # После регистрации предлагаем войти; браузер выполняет новый GET-запрос.
+    return render(request, "portal/form.html", {"form": form, "title": "Регистрация", "button": "Зарегистрироваться", "kind": "register"})  # Показываем форму; ошибки остаются рядом с её полями.
+
+def login_view(request):  # Одна форма входа обслуживает пользователя и администратора.
+    form = AuthenticationForm(request, data=request.POST if request.method == "POST" else None)  # Передаём готовой форме запрос и введённые логин/пароль.
+    form.fields["username"].label = "Логин"  # Делаем подпись стандартной формы понятной и соответствующей заданию.
+    if request.method == "POST" and form.is_valid():  # При неверных данных не создаём сессию, а ниже показываем ошибки формы.
+        login(request, form.get_user())  # Запоминаем вошедшего пользователя в сессии; пароль в cookie не помещается.
+        if request.user.is_staff:  # Проверяем флаг администратора, который хранится в БД.
+            return redirect("dashboard")  # Администратора отправляем в общую панель заявок.
+        return redirect("applications")  # Обычного пользователя отправляем к его заявкам.
+    return render(request, "portal/form.html", {"form": form, "title": "Вход", "button": "Войти", "kind": "login"})  # Возвращаем пустую форму или форму с ошибкой входа.
+
+@login_required  # До входа в эту функцию проверяем, что пользователь авторизован.
+@require_POST  # Выход разрешён только через POST-форму с CSRF-токеном.
+def logout_view(request):  # Эта функция завершает текущую сессию.
+    logout(request)  # Django удаляет данные входа из сессии.
+    return redirect("login")  # После выхода открываем страницу входа.
+
+@login_required  # Гостю нельзя просматривать личный кабинет.
+def applications_view(request):  # Показываем заявки того, кто вошёл в аккаунт.
+    items = Application.objects.filter(user=request.user)  # SQL-фильтр выбирает только собственные заявки, а не скрывает чужие в HTML.
+    return render(request, "portal/applications.html", {"items": items})  # Передаём список в шаблон под именем items.
+
+@login_required  # Чтобы создать заявку, нужно сначала войти.
+def new_application_view(request):  # Обрабатываем создание новой заявки.
+    form = ApplicationForm(request.POST if request.method == "POST" else None)  # GET показывает поля; POST приносит данные для проверки.
+    if request.method == "POST" and form.is_valid():  # Ничего не сохраняем до проверки курса, даты и оплаты.
+        item = form.save(commit=False)  # Получаем объект в памяти: commit=False означает «пока не записывай в БД».
+        item.user = request.user  # Назначаем владельцем того, кто вошёл, а не пользователя из поддельного POST.
+        item.save()  # Теперь сохраняем заявку; статус new возьмётся из default в модели.
+        messages.success(request, "Заявка создана.")  # Сохраняем короткое уведомление для следующей страницы.
+        return redirect("applications")  # Возвращаемся к списку; обновление страницы не повторит предыдущий POST.
+    return render(request, "portal/form.html", {"form": form, "title": "Новая заявка", "button": "Отправить заявку"})  # При ошибках снова показываем заполненную форму.
+
+@login_required  # Отзыв может отправить только вошедший пользователь.
+@require_POST  # Запись текста отзыва выполняется через POST, а не открытие ссылки.
+def review_view(request, pk):  # pk приходит из URL и означает номер конкретной заявки.
+    item = get_object_or_404(Application, pk=pk, user=request.user)  # Ищем запись сразу с проверкой владельца: чужой номер даст 404.
+    if item.status != "completed":  # Даже если отправить форму вручную, сервер проверит завершение обучения.
+        raise PermissionDenied("Отзыв доступен после завершения обучения.")  # Останавливаем обработку и возвращаем запрет 403.
+    form = ReviewForm(request.POST, instance=item)  # instance связывает форму с существующей заявкой, чтобы обновить её, а не создать новую.
+    if form.is_valid():  # Проверяем непустой текст и длину до 2000 символов.
+        form.save()  # Сохраняем только разрешённое поле отзыва.
+        messages.success(request, "Отзыв сохранён.")  # Объясняем пользователю результат сохранения.
+        return redirect("applications")  # После успешного POST открываем список заявок.
+    return render(request, "portal/form.html", {"form": form, "title": "Отзыв", "button": "Сохранить"})  # Некорректный текст не теряется: показываем его с ошибкой формы.
+
+@login_required  # Панель тоже требует авторизованной сессии.
+def dashboard_view(request):  # Показываем администратору заявки всех пользователей.
+    if not request.user.is_staff:  # Вход в аккаунт сам по себе не даёт административную роль.
+        raise PermissionDenied("Этот раздел только для администратора.")  # Обычный пользователь получает 403.
+    items = Application.objects.all()  # Администратору разрешён список всех заявок.
+    status = request.GET.get("status", "")  # Читаем фильтр из адреса; если параметра нет, используем пустую строку.
+    if status:  # Непустой фильтр означает, что выбран конкретный статус.
+        items = items.filter(status=status)  # ORM безопасно подставляет значение в запрос к БД.
+    page = Paginator(items, 5).get_page(request.GET.get("page"))  # Делим результат на страницы по пять записей и выбираем нужную.
+    return render(request, "portal/dashboard.html", {"page": page, "statuses": STATUSES, "selected": status})  # Передаём страницу записей, варианты статусов и текущий фильтр.
+
+@login_required  # Отдельно защищаем обработчик записи статуса авторизацией.
+@require_POST  # Менять состояние через GET нельзя.
+def status_view(request, pk):  # pk — id заявки, для которой нажали кнопку «Сохранить».
+    if not request.user.is_staff:  # Проверяем роль здесь тоже: злоумышленник может не открывать панель, а сразу прислать POST.
+        raise PermissionDenied("Менять статус может только администратор.")  # Без нужной роли запрещаем изменение.
+    item = get_object_or_404(Application, pk=pk)  # Загружаем нужную заявку или возвращаем 404.
+    form = StatusForm(request.POST)  # Проверяем, что прислан один из трёх известных статусов.
+    if form.is_valid():  # cleaned_data используем только после успешной проверки формы.
+        new_status = form.cleaned_data["status"]  # Здесь уже проверенное значение, а не сырой текст из браузера.
+        item.status = new_status  # Записываем выбранный допустимый статус в объект заявки.
+        item.save()  # Сохраняем изменение в базе данных.
+        messages.success(request, "Статус обновлён.")  # После перенаправления появится подтверждение сохранения.
+    else:  # Обрабатываем неизвестный статус из поддельного запроса.
+        messages.error(request, "Выбран неизвестный статус.")  # Возвращаем понятную ошибку вместо записи случайного значения.
+    return redirect("dashboard")  # После обработки открываем обновлённую панель.
