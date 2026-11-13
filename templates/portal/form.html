@@ -11,7 +11,7 @@
 {{ form.non_field_errors }} {# Здесь появляются общие ошибки, например неверная пара логин/пароль. #}
 {% for field in form %} {# Проходим по всем полям формы в порядке, заданном Python-классом. #}
 <div class="field"><label for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }} {# label связан с id поля; сам виджет создаёт Django с нужным типом и атрибутами. #}
-{% if field.help_text %}<small class="help">{{ field.help_text|striptags }}</small>{% endif %} {# Выводим текстовые подсказки; удаляем HTML-разметку из стандартных подсказок. #}
+{% if field.help_text %}<small class="help" id="{{ field.auto_id }}_helptext">{{ field.help_text|striptags }}</small>{% endif %} {# Выводим текстовые подсказки; удаляем HTML-разметку из стандартных подсказок. #}
 {{ field.errors }}</div> {# Ошибки выводятся непосредственно рядом с соответствующим полем. #}
 {% endfor %} {# Завершаем перебор полей. #}
 <button class="button primary full" type="submit">{{ button }}</button> {# Основная кнопка отправляет форму; подпись зависит от страницы. #}

@@ -31,6 +31,9 @@ class Command(BaseCommand):  # Django найдёт эту команду по и
             request.user = user  # Выбранная роль управляет навигацией и видимостью разделов.
             html = render_to_string(f"portal/{template}.html", context, request=request)  # Генерируем готовый HTML с учебными данными.
             html = html.replace('/static/', '../static/')  # Относительные пути позволяют открыть HTML двойным щелчком без Django-сервера.
+            links = {"/": "login.html", "/login/": "login.html", "/register/": "register.html", "/applications/": "applications.html", "/applications/new/": "new-application.html", "/admin/": "admin.html"}  # Статические макеты могут переходить друг к другу без локального сервера.
+            for source, target in links.items():  # Обновляем только href, оставляя неработающие POST-формы явно заблокированными.
+                html = html.replace(f'href="{source}"', f'href="{target}"')  # Меню макета открывает соседний HTML, а не несуществующий абсолютный путь file://.
             html = re.sub(r'<input[^>]*name="csrfmiddlewaretoken"[^>]*>', '<!-- CSRF удалён: это статический макет без отправки данных. -->', html)  # Не сохраняем временные токены в репозитории.
             html = html.replace('<form ', '<form onsubmit="return false" ')  # Макеты показывают внешний вид, но ничего не отправляют и не меняют.
             css = (Path(settings.BASE_DIR) / "static/css/style.css").read_text(encoding="utf-8")  # Берём те же мобильные правила, что использует рабочий сайт.
